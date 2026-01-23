@@ -40,6 +40,7 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
   const [gateChecked, setGateChecked] = useState(false);
   const [bookingChecked, setBookingChecked] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchPtQuery, setSearchPtQuery] = useState('');
   const [selectedDate, setSelectedDate] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
@@ -58,6 +59,7 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
   const [validated, setValidated] = useState(125);
   const [notValidated, setNotValidated] = useState(100);
   const [searchDebounce, setSearchDebounce] = useState('');
+  const [searchPtDebounce, setSearchPtDebounce] = useState('');
   const [clubs, setClubs] = useState<Club[]>([]);
   const [selectedClub, setSelectedClub] = useState<string>('');
   const [isLoadingClubs, setIsLoadingClubs] = useState(false);
@@ -140,11 +142,10 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
       
       setClubs(clubsData);
       
-      // Set first club as default if no club is selected
-      if (clubsData.length > 0 && !selectedClub) {
-        const firstClub = clubsData[0].name;
-        console.log('Setting default club:', firstClub);
-        setSelectedClub(firstClub);
+      // Set "All Club" as default if no club is selected
+      if (!selectedClub) {
+        console.log('Setting default to: All Club');
+        setSelectedClub('All Club');
         // Note: fetchDashboardData will be triggered by useEffect when selectedClub changes
       }
     } catch (error) {
@@ -169,13 +170,13 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
       // Build query parameters manually to ensure proper encoding (%20 instead of +)
       const queryParams: string[] = [];
       
-      // Filter by club (always include if selectedClub is set)
-      if (selectedClub) {
+      // Filter by club (only if selectedClub is set and not "All Club")
+      if (selectedClub && selectedClub !== 'All Club') {
         // Use encodeURIComponent to ensure spaces are encoded as %20, not +
         queryParams.push(`club=${encodeURIComponent(selectedClub)}`);
         console.log('Fetching dashboard data with club filter:', selectedClub);
       } else {
-        console.log('Fetching dashboard data without club filter');
+        console.log('Fetching dashboard data without club filter (All Club)');
       }
       
       // Filter by date
@@ -186,6 +187,14 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
       // Filter by member name (from search query with debounce)
       if (searchDebounce.trim()) {
         queryParams.push(`nama_member=${encodeURIComponent(searchDebounce.trim())}`);
+      }
+      
+      // Filter by PT name (from PT search query with debounce)
+      if (searchPtDebounce.trim()) {
+        const ptFilter = searchPtDebounce.trim();
+        queryParams.push(`nama_pt=${encodeURIComponent(ptFilter)}`);
+        console.log('PT Filter - Original:', ptFilter);
+        console.log('PT Filter - Encoded:', encodeURIComponent(ptFilter));
       }
       
       // Filter by gate status
@@ -202,8 +211,10 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
       const dashboardEndpoint = `${apiUrl}/api/ptconduct/dashboard${queryString ? `?${queryString}` : ''}`;
       
       console.log('=== FETCHING DASHBOARD DATA ===');
+      console.log('API Endpoint:', `${apiUrl}/api/ptconduct/dashboard`);
       console.log('Full API URL:', dashboardEndpoint);
       console.log('Query string:', queryString);
+      console.log('Authorization Header:', `Bearer ${authToken.substring(0, 20)}...`);
       console.log('Selected club for filter:', selectedClub);
       console.log('Available clubs list:', clubs.map(c => ({ id: c.id, name: c.name })));
       console.log('Is selected club in available clubs?', clubs.some(c => c.name === selectedClub));
@@ -314,6 +325,15 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
+  // Debounce PT search query to avoid too many API calls
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearchPtDebounce(searchPtQuery);
+    }, 500); // Wait 500ms after user stops typing
+
+    return () => clearTimeout(timer);
+  }, [searchPtQuery]);
+
   // Fetch clubs when component mounts or token changes
   useEffect(() => {
     if (authToken) {
@@ -330,13 +350,14 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
     console.log('=== FETCH DASHBOARD DATA TRIGGERED ===');
     console.log('Selected club:', selectedClub);
     console.log('Selected date:', selectedDate);
-    console.log('Search query:', searchDebounce);
+    console.log('Search query (member):', searchDebounce);
+    console.log('Search query (PT):', searchPtDebounce);
     console.log('Gate checked:', gateChecked);
     console.log('Booking checked:', bookingChecked);
     
     fetchDashboardData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authToken, selectedDate, searchDebounce, gateChecked, bookingChecked, selectedClub]);
+  }, [authToken, selectedDate, searchDebounce, searchPtDebounce, gateChecked, bookingChecked, selectedClub]);
 
   // Filtering is now done on the backend via API
   // No need for client-side filtering since API handles it
@@ -351,7 +372,7 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchDebounce, selectedDate, gateChecked, bookingChecked, selectedClub]);
+  }, [searchDebounce, searchPtDebounce, selectedDate, gateChecked, bookingChecked, selectedClub]);
 
   // Show Face Checking page if needed
   if (showFaceChecking) {
@@ -415,11 +436,14 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
               ) : clubs.length === 0 ? (
                 <option>Tidak ada club</option>
               ) : (
-                clubs.map((club) => (
-                  <option key={club.id} value={club.name}>
-                    {club.name}
-                  </option>
-                ))
+                <>
+                  <option value="All Club">All Club</option>
+                  {clubs.map((club) => (
+                    <option key={club.id} value={club.name}>
+                      {club.name}
+                    </option>
+                  ))}
+                </>
               )}
             </select>
           </div>
@@ -507,9 +531,19 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
             <img src={searchIcon} alt="Search" className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" />
             <input
               type="text"
-              placeholder="Search Member or PT..."
+              placeholder="Search Member..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full py-3 px-3 pl-10 border border-[#ddd] rounded-lg text-sm"
+            />
+          </div>
+          <div className="relative flex-1 w-full md:w-auto min-w-0">
+            <img src={searchIcon} alt="Search" className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Search PT..."
+              value={searchPtQuery}
+              onChange={(e) => setSearchPtQuery(e.target.value)}
               className="w-full py-3 px-3 pl-10 border border-[#ddd] rounded-lg text-sm"
             />
           </div>
@@ -857,6 +891,10 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
                 <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
                   <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">PT</label>
                   <p className="text-base font-semibold text-gray-900 mt-2 break-words">{selectedDetailMember.pt}</p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Club</label>
+                  <p className="text-base font-semibold text-gray-900 mt-2 break-words">{selectedDetailMember.club || 'N/A'}</p>
                 </div>
                 <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
                   <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Start</label>
