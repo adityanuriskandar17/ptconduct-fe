@@ -8,6 +8,7 @@ import searchIcon from '../assets/search.svg';
 import validasiIcon from '../assets/validasi.svg';
 import gateCheckIcon from '../assets/gate_check.svg';
 import uncheckIcon from '../assets/uncheck.svg';
+import FaceValidation from './FaceValidation';
 
 interface Member {
   id: number;
@@ -33,6 +34,8 @@ const Dashboard = () => {
   const [selectedDetailMember, setSelectedDetailMember] = useState<Member | null>(null);
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
   const [memberId, setMemberId] = useState('');
+  const [showFaceValidation, setShowFaceValidation] = useState(false);
+  const [validationMember, setValidationMember] = useState<Member | null>(null);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -121,66 +124,79 @@ const Dashboard = () => {
     return matchesSearch;
   });
 
+  // Show Face Validation page if needed
+  if (showFaceValidation && validationMember) {
+    return (
+      <FaceValidation 
+        member={validationMember} 
+        onBack={() => {
+          setShowFaceValidation(false);
+          setValidationMember(null);
+        }} 
+      />
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-[#f5f5f5] p-3 md:p-5 font-sans">
+    <div className="min-h-screen bg-[#f5f5f5] p-3 sm:p-4 md:p-5 lg:p-6 font-sans overflow-x-hidden">
       {/* Navigation Bar */}
-      <nav className="flex flex-col lg:flex-row justify-between items-start lg:items-center bg-white px-4 md:px-6 py-4 rounded-lg shadow-sm mb-4 md:mb-6 gap-4 lg:gap-0">
+      <nav className="flex flex-col lg:flex-row justify-between items-start lg:items-center bg-white px-4 sm:px-5 md:px-6 py-3 sm:py-4 rounded-lg shadow-sm mb-4 sm:mb-5 md:mb-6 gap-3 sm:gap-4 lg:gap-0">
         <div className="flex flex-col gap-0.5">
-          <h1 className="m-0 text-lg md:text-xl font-semibold text-[#1a1a1a] leading-tight">PT Conduct Dashboard</h1>
-          <p className="m-0 text-xs md:text-[13px] text-[#666] leading-tight">PT Conduct - A.R. Hakim</p>
+          <h1 className="m-0 text-base sm:text-lg md:text-xl font-semibold text-[#1a1a1a] leading-tight">PT Conduct Dashboard</h1>
+          <p className="m-0 text-xs sm:text-[13px] text-[#666] leading-tight">PT Conduct - A.R. Hakim</p>
         </div>
-        <div className="flex items-center gap-2 md:gap-3 flex-wrap w-full lg:w-auto">
-          <div className="bg-[#f8f9fa] border border-[#e0e0e0] px-3 md:px-4 py-2 rounded-[20px] flex flex-row items-center justify-center gap-2 md:gap-3 min-w-[180px] md:min-w-[200px] shadow-sm">
-            <span className="text-xs md:text-[13px] font-medium text-[#666]">{formatDate(currentDateTime)}</span>
+        <div className="flex items-center gap-2 sm:gap-3 flex-wrap w-full lg:w-auto">
+          <div className="bg-[#f8f9fa] border border-[#e0e0e0] px-3 sm:px-4 md:px-4 py-2 sm:py-2 rounded-[20px] flex flex-row items-center justify-center gap-2 sm:gap-2 md:gap-3 shadow-sm">
+            <span className="text-xs sm:text-[13px] font-medium text-[#666] whitespace-nowrap">{formatDate(currentDateTime)}</span>
             <span className="text-sm md:text-base text-[#ddd] font-light">|</span>
-            <span className="font-semibold text-xs md:text-sm text-[#3b82f6] tracking-wide">{formatTime(currentDateTime)}</span>
+            <span className="font-semibold text-xs sm:text-sm text-[#3b82f6] tracking-wide whitespace-nowrap">{formatTime(currentDateTime)}</span>
           </div>
-          <div className="flex-1 lg:flex-none">
-            <select className="w-full lg:w-auto px-3 md:px-3.5 py-2 border border-[#ddd] rounded-md text-xs md:text-[13px] bg-white cursor-pointer min-w-[160px] md:min-w-[180px] text-[#333]">
+          <div className="flex-1 lg:flex-none min-w-0">
+            <select className="w-full lg:w-auto px-3 sm:px-3 md:px-3.5 py-2 sm:py-2 border border-[#ddd] rounded-md text-xs sm:text-[13px] bg-white cursor-pointer text-[#333]">
               <option>PT Conduct - A.R. Hakim</option>
             </select>
           </div>
-          <div className="flex-1 lg:flex-none">
+          <div className="flex-1 lg:flex-none min-w-0">
             <input 
               type="email" 
               value="adit_sang_legenda@example.com" 
               readOnly 
-              className="w-full lg:w-auto px-3 md:px-3.5 py-2 border border-[#ddd] rounded-md text-xs md:text-[13px] min-w-[200px] md:w-[240px] bg-white text-[#333]"
+              className="w-full lg:w-auto px-3 sm:px-3 md:px-3.5 py-2 sm:py-2 border border-[#ddd] rounded-md text-xs sm:text-[13px] bg-white text-[#333] truncate"
             />
           </div>
-          <button className="bg-transparent border-none text-xl cursor-pointer p-1.5 text-[#666] flex items-center justify-center w-8 h-8 rounded transition-colors hover:bg-[#f5f5f5]">
+          <button className="bg-transparent border-none text-xl cursor-pointer p-1.5 text-[#666] flex items-center justify-center w-8 h-8 rounded transition-colors hover:bg-[#f5f5f5] flex-shrink-0">
             <span className="block leading-none">⋯</span>
           </button>
         </div>
       </nav>
 
       {/* Summary Cards */}
-      <div className="bg-white rounded-xl shadow-md mb-4 md:mb-6 flex flex-col lg:flex-row items-center p-0">
-        <div className="flex-1 p-4 md:p-6 flex items-center gap-3 md:gap-4 bg-transparent">
+      <div className="bg-white rounded-xl shadow-md mb-4 sm:mb-5 md:mb-6 flex flex-col lg:flex-row items-center p-0 overflow-hidden">
+        <div className="flex-1 p-4 sm:p-5 md:p-6 flex items-center gap-3 sm:gap-3 md:gap-4 bg-transparent min-w-0">
           <div className="w-10 h-10 md:w-12 md:h-12 rounded-lg flex items-center justify-center flex-shrink-0 bg-transparent p-0">
             <img src={totalBookingIcon} alt="Total Booking" className="w-10 h-10 md:w-12 md:h-12 block" />
           </div>
-          <div className="flex-1 flex flex-col gap-1">
+          <div className="flex-1 flex flex-col gap-1 min-w-0">
             <p className="m-0 text-2xl md:text-[28px] font-bold text-[#1a1a1a] leading-tight">{totalBooking.toLocaleString('id-ID')}</p>
             <h3 className="m-0 text-xs md:text-[13px] text-[#666] font-medium leading-tight italic">Total Booking</h3>
           </div>
         </div>
         <div className="hidden lg:block w-px h-[50px] md:h-[60px] bg-[#e5e7eb] flex-shrink-0"></div>
-        <div className="flex-1 p-4 md:p-6 flex items-center gap-3 md:gap-4 bg-transparent">
+        <div className="flex-1 p-4 sm:p-5 md:p-6 flex items-center gap-3 sm:gap-3 md:gap-4 bg-transparent min-w-0">
           <div className="w-10 h-10 md:w-12 md:h-12 rounded-lg flex items-center justify-center flex-shrink-0 bg-transparent p-0">
             <img src={validationIcon} alt="Validated" className="w-10 h-10 md:w-12 md:h-12 block" />
           </div>
-          <div className="flex-1 flex flex-col gap-1">
+          <div className="flex-1 flex flex-col gap-1 min-w-0">
             <p className="m-0 text-2xl md:text-[28px] font-bold text-[#1a1a1a] leading-tight">{validated}</p>
             <h3 className="m-0 text-xs md:text-[13px] text-[#666] font-medium leading-tight italic">Tervalidasi</h3>
           </div>
         </div>
         <div className="hidden lg:block w-px h-[50px] md:h-[60px] bg-[#e5e7eb] flex-shrink-0"></div>
-        <div className="flex-1 p-4 md:p-6 flex items-center gap-3 md:gap-4 bg-transparent">
+        <div className="flex-1 p-4 sm:p-5 md:p-6 flex items-center gap-3 sm:gap-3 md:gap-4 bg-transparent min-w-0">
           <div className="w-10 h-10 md:w-12 md:h-12 rounded-lg flex items-center justify-center flex-shrink-0 bg-transparent p-0">
             <img src={notValidationIcon} alt="Not Validated" className="w-10 h-10 md:w-12 md:h-12 block" />
           </div>
-          <div className="flex-1 flex flex-col gap-1">
+          <div className="flex-1 flex flex-col gap-1 min-w-0">
             <p className="m-0 text-2xl md:text-[28px] font-bold text-[#1a1a1a] leading-tight">{notValidated}</p>
             <h3 className="m-0 text-xs md:text-[13px] text-[#666] font-medium leading-tight italic">Belum Tervalidasi</h3>
           </div>
@@ -188,14 +204,14 @@ const Dashboard = () => {
       </div>
 
       {/* Data Member Section */}
-      <div className="bg-white p-4 md:p-6 rounded-xl shadow-md">
-        <div className="mb-4 md:mb-6">
-          <h2 className="m-0 mb-1 text-lg md:text-xl font-semibold text-[#1a1a1a]">Data Member</h2>
-          <p className="m-0 text-xs md:text-sm text-[#666]">Daftar member dan status booking</p>
+      <div className="bg-white p-4 sm:p-5 md:p-6 rounded-xl shadow-md overflow-hidden">
+        <div className="mb-4 sm:mb-5 md:mb-6">
+          <h2 className="m-0 mb-1 text-base sm:text-lg md:text-xl font-semibold text-[#1a1a1a]">Data Member</h2>
+          <p className="m-0 text-xs sm:text-sm text-[#666]">Daftar member dan status booking</p>
         </div>
 
-        <div className="flex flex-col lg:flex-row gap-3 md:gap-4 mb-4 md:mb-6 flex-wrap items-stretch lg:items-center">
-          <div className="relative flex-1 min-w-[250px] w-full md:w-auto">
+        <div className="flex flex-col lg:flex-row gap-2 sm:gap-3 md:gap-4 mb-3 sm:mb-4 md:mb-6 flex-wrap items-stretch lg:items-center">
+          <div className="relative flex-1 w-full md:w-auto min-w-0">
             <img src={searchIcon} alt="Search" className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" />
             <input
               type="text"
@@ -205,12 +221,12 @@ const Dashboard = () => {
               className="w-full py-3 px-3 pl-10 border border-[#ddd] rounded-lg text-sm"
             />
           </div>
-          <div className="relative flex items-center w-full md:w-auto">
+          <div className="relative flex items-center w-full md:w-auto min-w-0">
             <input
               type="date"
               value={selectedDate}
               onChange={(e) => setSelectedDate(e.target.value)}
-              className={`w-full md:w-auto py-3 px-3 pr-3 border border-[#ddd] rounded-lg text-sm min-w-[180px] bg-white appearance-none cursor-pointer [color-scheme:light] ${
+              className={`w-full md:w-auto py-2.5 sm:py-3 px-3 pr-3 border border-[#ddd] rounded-lg text-sm bg-white appearance-none cursor-pointer [color-scheme:light] ${
                 selectedDate ? 'text-[#333]' : 'text-transparent'
               }`}
             />
@@ -368,8 +384,9 @@ const Dashboard = () => {
               <button
                 onClick={() => {
                   console.log('Validasi Member:', selectedMember.name);
+                  setValidationMember(selectedMember);
                   setIsModalOpen(false);
-                  // Add your validation logic here
+                  setShowFaceValidation(true);
                 }}
                 className="w-full flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:border-purple-500 hover:bg-purple-50 transition-all cursor-pointer group"
               >
@@ -393,8 +410,9 @@ const Dashboard = () => {
               <button
                 onClick={() => {
                   console.log('Validasi Personal Trainer:', selectedMember.pt);
+                  setValidationMember(selectedMember);
                   setIsModalOpen(false);
-                  // Add your validation logic here
+                  setShowFaceValidation(true);
                 }}
                 className="w-full flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-all cursor-pointer group"
               >
