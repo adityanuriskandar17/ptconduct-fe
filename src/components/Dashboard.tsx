@@ -22,7 +22,12 @@ interface Member {
   faceStatus: boolean;
 }
 
-const Dashboard = () => {
+interface DashboardProps {
+  onLogout?: () => void;
+  userEmail?: string;
+}
+
+const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com' }: DashboardProps) => {
   const [currentDateTime, setCurrentDateTime] = useState(new Date());
   const [gateChecked, setGateChecked] = useState(true);
   const [bookingChecked, setBookingChecked] = useState(true);
@@ -36,6 +41,8 @@ const Dashboard = () => {
   const [memberId, setMemberId] = useState('');
   const [showFaceValidation, setShowFaceValidation] = useState(false);
   const [validationMember, setValidationMember] = useState<Member | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 5;
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -124,6 +131,17 @@ const Dashboard = () => {
     return matchesSearch;
   });
 
+  // Pagination calculations
+  const totalPages = Math.ceil(filteredMembers.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const currentMembers = filteredMembers.slice(startIndex, endIndex);
+
+  // Reset to page 1 when search query changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery]);
+
   // Show Face Validation page if needed
   if (showFaceValidation && validationMember) {
     return (
@@ -159,11 +177,20 @@ const Dashboard = () => {
           <div className="flex-1 lg:flex-none min-w-0">
             <input 
               type="email" 
-              value="adit_sang_legenda@example.com" 
+              value={userEmail} 
               readOnly 
               className="w-full lg:w-auto px-3 sm:px-3 md:px-3.5 py-2 sm:py-2 border border-[#ddd] rounded-md text-xs sm:text-[13px] bg-white text-[#333] truncate"
             />
           </div>
+          {onLogout && (
+            <button 
+              onClick={onLogout}
+              className="px-3 sm:px-4 py-1.5 sm:py-2 bg-red-500 hover:bg-red-600 text-white rounded-md text-xs sm:text-[13px] font-medium transition-colors flex-shrink-0"
+              title="Logout"
+            >
+              Keluar
+            </button>
+          )}
           <button className="bg-transparent border-none text-xl cursor-pointer p-1.5 text-[#666] flex items-center justify-center w-8 h-8 rounded transition-colors hover:bg-[#f5f5f5] flex-shrink-0">
             <span className="block leading-none">⋯</span>
           </button>
@@ -294,9 +321,10 @@ const Dashboard = () => {
               </tr>
             </thead>
             <tbody>
-              {filteredMembers.map((member, index) => (
-                <tr key={member.id} className="hover:bg-[#f9fafb]">
-                  <td className="p-2 md:p-2.5 lg:p-3 border-b border-[#e5e7eb] text-[#333] text-center text-xs md:text-sm">{index + 1}</td>
+              {currentMembers.length > 0 ? (
+                currentMembers.map((member, index) => (
+                  <tr key={member.id} className="hover:bg-[#f9fafb]">
+                    <td className="p-2 md:p-2.5 lg:p-3 border-b border-[#e5e7eb] text-[#333] text-center text-xs md:text-sm">{startIndex + index + 1}</td>
                   <td className="p-2 md:p-2.5 lg:p-3 border-b border-[#e5e7eb] text-[#333] text-left text-xs md:text-sm" style={{ width: '150px', maxWidth: '150px', wordWrap: 'break-word', overflowWrap: 'break-word', whiteSpace: 'normal' }}>{member.name}</td>
                   <td className="p-2 md:p-2.5 lg:p-3 border-b border-[#e5e7eb] text-[#333] text-left text-xs md:text-sm" style={{ width: '120px', maxWidth: '120px', wordWrap: 'break-word', overflowWrap: 'break-word', whiteSpace: 'normal' }}>{member.pt}</td>
                   <td className="p-2 md:p-2.5 lg:p-3 border-b border-[#e5e7eb] text-[#333] text-left text-xs" style={{ width: '160px', maxWidth: '160px', wordWrap: 'break-word', overflowWrap: 'break-word', whiteSpace: 'normal' }}>{formatDateTime(member.start)}</td>
@@ -351,10 +379,78 @@ const Dashboard = () => {
                     </div>
                   </td>
                 </tr>
-              ))}
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={8} className="p-4 text-center text-gray-500 text-sm">
+                    Tidak ada data yang ditemukan
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
+
+        {/* Pagination */}
+        {filteredMembers.length > 0 && (
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-4 sm:mt-6 pt-4 border-t border-[#e5e7eb]">
+            <div className="text-sm text-gray-600">
+              Menampilkan {startIndex + 1} - {Math.min(endIndex, filteredMembers.length)} dari {filteredMembers.length} data
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+                className="px-3 py-2 border border-[#ddd] rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                Sebelumnya
+              </button>
+              
+              <div className="flex items-center gap-1">
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+                  // Show first page, last page, current page, and pages around current
+                  if (
+                    page === 1 ||
+                    page === totalPages ||
+                    (page >= currentPage - 1 && page <= currentPage + 1)
+                  ) {
+                    return (
+                      <button
+                        key={page}
+                        onClick={() => setCurrentPage(page)}
+                        className={`px-3 py-2 min-w-[40px] border rounded-lg text-sm font-medium transition-colors ${
+                          currentPage === page
+                            ? 'bg-[#3b82f6] text-white border-[#3b82f6]'
+                            : 'border-[#ddd] text-gray-700 bg-white hover:bg-gray-50'
+                        }`}
+                      >
+                        {page}
+                      </button>
+                    );
+                  } else if (
+                    page === currentPage - 2 ||
+                    page === currentPage + 2
+                  ) {
+                    return (
+                      <span key={page} className="px-2 text-gray-500">
+                        ...
+                      </span>
+                    );
+                  }
+                  return null;
+                })}
+              </div>
+
+              <button
+                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                disabled={currentPage === totalPages}
+                className="px-3 py-2 border border-[#ddd] rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                Selanjutnya
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Modal */}
