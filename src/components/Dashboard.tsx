@@ -21,6 +21,12 @@ interface Member {
   gateStatus: boolean;
   bookingStatus: boolean;
   faceStatus: boolean;
+  club?: string; // Optional club field for client-side filtering
+}
+
+interface Club {
+  id: number;
+  name: string;
 }
 
 interface DashboardProps {
@@ -52,6 +58,10 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
   const [validated, setValidated] = useState(125);
   const [notValidated, setNotValidated] = useState(100);
   const [searchDebounce, setSearchDebounce] = useState('');
+  const [clubs, setClubs] = useState<Club[]>([]);
+  const [selectedClub, setSelectedClub] = useState<string>('');
+  const [isLoadingClubs, setIsLoadingClubs] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string>('');
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -81,43 +91,17 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
     return formatDate(date) + ' ' + formatTime(date);
   };
 
-  // Fetch dashboard data from API with filters
-  const fetchDashboardData = async () => {
+  // Fetch clubs from API
+  const fetchClubs = async () => {
     if (!authToken) {
-      console.warn('No auth token available');
+      console.warn('No auth token available for fetching clubs');
       return;
     }
 
-    setIsLoadingData(true);
+    setIsLoadingClubs(true);
     try {
       const apiUrl = import.meta.env.VITE_API_PTCONDUCT || 'http://127.0.0.1:8088';
-      
-      // Build query parameters
-      const queryParams = new URLSearchParams();
-      
-      // Filter by date
-      if (selectedDate) {
-        queryParams.append('start_date', selectedDate);
-      }
-      
-      // Filter by member name (from search query with debounce)
-      if (searchDebounce.trim()) {
-        queryParams.append('nama_member', searchDebounce.trim());
-      }
-      
-      // Filter by gate status
-      if (gateChecked) {
-        queryParams.append('gate', '1');
-      }
-      
-      // Filter by booking status
-      if (bookingChecked) {
-        queryParams.append('booking', '1');
-      }
-      
-      const dashboardEndpoint = `${apiUrl}/api/ptconduct/dashboard?${queryParams.toString()}`;
-
-      const response = await fetch(dashboardEndpoint, {
+      const response = await fetch(`${apiUrl}/api/ptconduct/clubs`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${authToken}`,
@@ -131,8 +115,128 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
 
       const data = await response.json();
       
+      // Handle different possible response structures
+      let clubsData: Club[] = [];
+      if (Array.isArray(data)) {
+        clubsData = data.map((item: any) => ({
+          id: item.id || item.club_id || 0,
+          name: item.name || item.nama || item.club_name || String(item),
+        }));
+      } else if (data.ok && Array.isArray(data.data)) {
+        clubsData = data.data.map((item: any) => ({
+          id: item.id || item.club_id || 0,
+          name: item.name || item.nama || item.club_name || String(item),
+        }));
+      } else if (data.clubs && Array.isArray(data.clubs)) {
+        clubsData = data.clubs.map((item: any) => ({
+          id: item.id || item.club_id || 0,
+          name: item.name || item.nama || item.club_name || String(item),
+        }));
+      }
+
+      console.log('=== CLUBS FETCHED ===');
+      console.log('Total clubs:', clubsData.length);
+      console.log('Club names:', clubsData.map(c => c.name));
+      
+      setClubs(clubsData);
+      
+      // Set first club as default if no club is selected
+      if (clubsData.length > 0 && !selectedClub) {
+        const firstClub = clubsData[0].name;
+        console.log('Setting default club:', firstClub);
+        setSelectedClub(firstClub);
+        // Note: fetchDashboardData will be triggered by useEffect when selectedClub changes
+      }
+    } catch (error) {
+      console.error('Error fetching clubs:', error);
+    } finally {
+      setIsLoadingClubs(false);
+    }
+  };
+
+  // Fetch dashboard data from API with filters
+  const fetchDashboardData = async () => {
+    if (!authToken) {
+      console.warn('No auth token available');
+      return;
+    }
+
+    setIsLoadingData(true);
+    setErrorMessage(''); // Clear previous error
+    try {
+      const apiUrl = import.meta.env.VITE_API_PTCONDUCT || 'http://127.0.0.1:8088';
+      
+      // Build query parameters manually to ensure proper encoding (%20 instead of +)
+      const queryParams: string[] = [];
+      
+      // Filter by club (always include if selectedClub is set)
+      if (selectedClub) {
+        // Use encodeURIComponent to ensure spaces are encoded as %20, not +
+        queryParams.push(`club=${encodeURIComponent(selectedClub)}`);
+        console.log('Fetching dashboard data with club filter:', selectedClub);
+      } else {
+        console.log('Fetching dashboard data without club filter');
+      }
+      
+      // Filter by date
+      if (selectedDate) {
+        queryParams.push(`start_date=${encodeURIComponent(selectedDate)}`);
+      }
+      
+      // Filter by member name (from search query with debounce)
+      if (searchDebounce.trim()) {
+        queryParams.push(`nama_member=${encodeURIComponent(searchDebounce.trim())}`);
+      }
+      
+      // Filter by gate status
+      if (gateChecked) {
+        queryParams.push('gate=1');
+      }
+      
+      // Filter by booking status
+      if (bookingChecked) {
+        queryParams.push('booking=1');
+      }
+      
+      const queryString = queryParams.join('&');
+      const dashboardEndpoint = `${apiUrl}/api/ptconduct/dashboard${queryString ? `?${queryString}` : ''}`;
+      
+      console.log('=== FETCHING DASHBOARD DATA ===');
+      console.log('Full API URL:', dashboardEndpoint);
+      console.log('Query string:', queryString);
+      console.log('Selected club for filter:', selectedClub);
+      console.log('Available clubs list:', clubs.map(c => ({ id: c.id, name: c.name })));
+      console.log('Is selected club in available clubs?', clubs.some(c => c.name === selectedClub));
+
+      const response = await fetch(dashboardEndpoint, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          console.error('=== 404 ERROR ===');
+          console.error('Club not found:', selectedClub);
+          console.error('Available clubs:', clubs.map(c => c.name));
+          console.error('Request URL:', dashboardEndpoint);
+          console.error('Is selected club in available clubs?', clubs.some(c => c.name === selectedClub));
+          throw new Error(`Club "${selectedClub}" tidak ditemukan di server. Status: ${response.status}`);
+        }
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      console.log('=== API RESPONSE ===');
+      console.log('Response club:', data.club);
+      console.log('Response statistics:', data.statistics);
+      console.log('Data count:', data.data?.length || 0);
+      
       // Map API response to Member interface based on actual API structure
-      // Response structure: { ok: true, data: [...], club: "all", count: 1, role_id: 1 }
+      // Response structure: { ok: true, data: [...], club: "Stride - Cibinong", count: 1, role_id: 1, statistics: {...} }
       if (data.ok && Array.isArray(data.data) && data.data.length > 0) {
         const mappedMembers: Member[] = data.data.map((item: any, index: number) => ({
           id: item.id || index + 1,
@@ -147,33 +251,55 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
           bookingStatus: item.booking === 1,
           // faceStatus: true if both face_booking_member === 1 AND face_booking_pt === 1
           faceStatus: item.face_booking_member === 1 && item.face_booking_pt === 1,
+          // Store club info
+          club: item.club || data.club || '',
         }));
+        
         setMembers(mappedMembers);
         
-        // Calculate summary statistics from the mapped data
-        const validatedCount = mappedMembers.filter(m => m.faceStatus).length;
-        const notValidatedCount = mappedMembers.filter(m => !m.faceStatus).length;
-        
-        // Update total booking from count or use length of data
-        if (data.count !== undefined) {
-          setTotalBooking(data.count);
+        // Use statistics from API response if available (more accurate, already filtered by club)
+        if (data.statistics) {
+          console.log('Using statistics from API:', data.statistics);
+          setTotalBooking(data.statistics.total_booking || 0);
+          setValidated(data.statistics.tervalidasi || 0);
+          setNotValidated(data.statistics.belum_tervalidasi || 0);
         } else {
+          console.log('Statistics not available in API response, calculating from data');
+          // Fallback: Calculate from mapped data if statistics not available
+          const validatedCount = mappedMembers.filter(m => m.faceStatus).length;
+          const notValidatedCount = mappedMembers.filter(m => !m.faceStatus).length;
           setTotalBooking(mappedMembers.length);
+          setValidated(validatedCount);
+          setNotValidated(notValidatedCount);
         }
-        
-        setValidated(validatedCount);
-        setNotValidated(notValidatedCount);
       } else if (data.ok && Array.isArray(data.data) && data.data.length === 0) {
         // Empty data
         setMembers([]);
-        setTotalBooking(0);
-        setValidated(0);
-        setNotValidated(0);
+        // Use statistics from API if available, otherwise set to 0
+        if (data.statistics) {
+          setTotalBooking(data.statistics.total_booking || 0);
+          setValidated(data.statistics.tervalidasi || 0);
+          setNotValidated(data.statistics.belum_tervalidasi || 0);
+        } else {
+          setTotalBooking(0);
+          setValidated(0);
+          setNotValidated(0);
+        }
       }
 
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
-      // Keep default/empty data on error
+      const errorMsg = error instanceof Error ? error.message : 'Terjadi kesalahan saat mengambil data';
+      setErrorMessage(errorMsg);
+      
+      // Clear data on error to avoid showing stale data
+      setMembers([]);
+      setTotalBooking(0);
+      setValidated(0);
+      setNotValidated(0);
+      
+      // Clear error message after 5 seconds
+      setTimeout(() => setErrorMessage(''), 5000);
     } finally {
       setIsLoadingData(false);
     }
@@ -188,13 +314,29 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Fetch data when component mounts, token changes, or filters change
+  // Fetch clubs when component mounts or token changes
   useEffect(() => {
     if (authToken) {
-      fetchDashboardData();
+      fetchClubs();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authToken, selectedDate, searchDebounce, gateChecked, bookingChecked]);
+  }, [authToken]);
+
+  // Fetch data when component mounts, token changes, or filters change
+  useEffect(() => {
+    if (!authToken) return;
+    
+    // Always fetch when filters change, including club change
+    console.log('=== FETCH DASHBOARD DATA TRIGGERED ===');
+    console.log('Selected club:', selectedClub);
+    console.log('Selected date:', selectedDate);
+    console.log('Search query:', searchDebounce);
+    console.log('Gate checked:', gateChecked);
+    console.log('Booking checked:', bookingChecked);
+    
+    fetchDashboardData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authToken, selectedDate, searchDebounce, gateChecked, bookingChecked, selectedClub]);
 
   // Filtering is now done on the backend via API
   // No need for client-side filtering since API handles it
@@ -209,7 +351,7 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchDebounce, selectedDate, gateChecked, bookingChecked]);
+  }, [searchDebounce, selectedDate, gateChecked, bookingChecked, selectedClub]);
 
   // Show Face Checking page if needed
   if (showFaceChecking) {
@@ -250,8 +392,35 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
             <span className="font-semibold text-xs sm:text-sm text-[#3b82f6] tracking-wide whitespace-nowrap">{formatTime(currentDateTime)}</span>
           </div>
           <div className="flex-1 lg:flex-none min-w-0">
-            <select className="w-full lg:w-auto px-3 sm:px-3 md:px-3.5 py-2 sm:py-2 border border-[#ddd] rounded-md text-xs sm:text-[13px] bg-white cursor-pointer text-[#333]">
-              <option>PT Conduct - A.R. Hakim</option>
+            <select 
+              value={selectedClub}
+              onChange={(e) => {
+                const newClub = e.target.value;
+                console.log('=== CLUB CHANGED ===');
+                console.log('Previous club:', selectedClub);
+                console.log('New club:', newClub);
+                setSelectedClub(newClub);
+                // Reset to page 1 when club changes
+                setCurrentPage(1);
+                // Force immediate fetch (though useEffect should handle this)
+                if (authToken) {
+                  console.log('Triggering immediate fetch after club change');
+                }
+              }}
+              disabled={isLoadingClubs || clubs.length === 0}
+              className="w-full lg:w-auto px-3 sm:px-3 md:px-3.5 py-2 sm:py-2 border border-[#ddd] rounded-md text-xs sm:text-[13px] bg-white cursor-pointer text-[#333] disabled:bg-gray-100 disabled:cursor-not-allowed"
+            >
+              {isLoadingClubs ? (
+                <option>Memuat club...</option>
+              ) : clubs.length === 0 ? (
+                <option>Tidak ada club</option>
+              ) : (
+                clubs.map((club) => (
+                  <option key={club.id} value={club.name}>
+                    {club.name}
+                  </option>
+                ))
+              )}
             </select>
           </div>
           <div className="flex-1 lg:flex-none min-w-0">
@@ -280,6 +449,18 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
           )}
         </div>
       </nav>
+
+      {/* Error Message */}
+      {errorMessage && (
+        <div className="mx-4 sm:mx-6 lg:mx-8 mt-4 p-4 bg-red-50 border border-red-200 rounded-md">
+          <div className="flex items-center">
+            <svg className="w-5 h-5 text-red-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+            </svg>
+            <p className="text-sm text-red-800">{errorMessage}</p>
+          </div>
+        </div>
+      )}
 
       {/* Summary Cards */}
       <div className="bg-white rounded-xl shadow-md mb-4 sm:mb-5 md:mb-6 flex flex-col lg:flex-row items-center p-0 overflow-hidden">
