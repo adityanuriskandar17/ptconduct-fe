@@ -91,9 +91,9 @@ const FaceValidation = ({ member, onBack }: FaceValidationProps) => {
     frameCount: 0
   });
   const EAR_DROP_RATIO = 0.5; // EAR harus turun 50% dari baseline untuk dianggap tertutup
-  const MIN_CLOSED_FRAMES = 3; // Minimum frames mata harus tertutup
-  const MIN_OPEN_FRAMES = 3; // Minimum frames mata harus terbuka setelah tertutup
-  const BASELINE_FRAMES = 30; // Frames untuk calculate baseline
+  const MIN_CLOSED_FRAMES = 1; // Minimum frames mata harus tertutup (reduced for fast blinks)
+  const MIN_OPEN_FRAMES = 1; // Minimum frames mata harus terbuka setelah tertutup (reduced for fast blinks)
+  const BASELINE_FRAMES = 20; // Frames untuk calculate baseline (reduced for faster initialization)
   const [currentEAR, setCurrentEAR] = useState<number | null>(null);
   const [baselineEAR, setBaselineEAR] = useState<number | null>(null);
 
@@ -207,9 +207,19 @@ const FaceValidation = ({ member, onBack }: FaceValidationProps) => {
                   'Frames:', state.closedFrames);
               }
             } else {
-              // Eyes opened before reaching minimum closed frames - not a blink
-              state.state = 'OPEN';
-              state.closedFrames = 0;
+              // Eyes opened before reaching minimum closed frames
+              // For very fast blinks, if EAR dropped significantly, count it immediately
+              if (earDropPercent > 40 && state.closedFrames > 0) {
+                // Fast blink detected - skip to CLOSED state immediately
+                state.state = 'CLOSED';
+                setIsBlinking(true);
+                console.log('⚡ Fast blink detected (CLOSING->CLOSED), EAR:', avgEAR.toFixed(3),
+                  'Drop:', earDropPercent.toFixed(1) + '%');
+              } else {
+                // Not a significant blink, reset
+                state.state = 'OPEN';
+                state.closedFrames = 0;
+              }
             }
             break;
             
@@ -225,12 +235,16 @@ const FaceValidation = ({ member, onBack }: FaceValidationProps) => {
           case 'OPENING':
             if (!isClosed) {
               state.openFrames++;
-              if (state.openFrames >= MIN_OPEN_FRAMES) {
+              // For fast blinks, detect immediately if EAR is back to normal range
+              const isBackToNormal = avgEAR >= (state.baselineEAR * 0.8);
+              
+              if (state.openFrames >= MIN_OPEN_FRAMES || (isBackToNormal && state.openFrames > 0)) {
                 // Complete blink detected!
                 const newCount = blinkCount + 1;
                 console.log('✅✅✅ BLINK DETECTED! Count:', newCount, 
                   'EAR:', avgEAR.toFixed(3),
-                  'Baseline:', state.baselineEAR.toFixed(3));
+                  'Baseline:', state.baselineEAR.toFixed(3),
+                  'Open frames:', state.openFrames);
                 setBlinkCount(prev => prev + 1);
                 setIsBlinking(true);
                 
