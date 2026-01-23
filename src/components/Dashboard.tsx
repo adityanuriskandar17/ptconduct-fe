@@ -9,6 +9,7 @@ import validasiIcon from '../assets/validasi.svg';
 import gateCheckIcon from '../assets/gate_check.svg';
 import uncheckIcon from '../assets/uncheck.svg';
 import FaceValidation from './FaceValidation';
+import FaceChecking from './FaceChecking';
 
 interface Member {
   id: number;
@@ -41,6 +42,7 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com' }: Da
   const [memberId, setMemberId] = useState('');
   const [showFaceValidation, setShowFaceValidation] = useState(false);
   const [validationMember, setValidationMember] = useState<Member | null>(null);
+  const [showFaceChecking, setShowFaceChecking] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5;
 
@@ -142,6 +144,17 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com' }: Da
     setCurrentPage(1);
   }, [searchQuery]);
 
+  // Show Face Checking page if needed
+  if (showFaceChecking) {
+    return (
+      <FaceChecking 
+        onBack={() => {
+          setShowFaceChecking(false);
+        }} 
+      />
+    );
+  }
+
   // Show Face Validation page if needed
   if (showFaceValidation && validationMember) {
     return (
@@ -161,7 +174,6 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com' }: Da
       <nav className="flex flex-col lg:flex-row justify-between items-start lg:items-center bg-white px-4 sm:px-5 md:px-6 py-3 sm:py-4 rounded-lg shadow-sm mb-4 sm:mb-5 md:mb-6 gap-3 sm:gap-4 lg:gap-0">
         <div className="flex flex-col gap-0.5">
           <h1 className="m-0 text-base sm:text-lg md:text-xl font-semibold text-[#1a1a1a] leading-tight">PT Conduct Dashboard</h1>
-          <p className="m-0 text-xs sm:text-[13px] text-[#666] leading-tight">PT Conduct - A.R. Hakim</p>
         </div>
         <div className="flex items-center gap-2 sm:gap-3 flex-wrap w-full lg:w-auto">
           <div className="bg-[#f8f9fa] border border-[#e0e0e0] px-3 sm:px-4 md:px-4 py-2 sm:py-2 rounded-[20px] flex flex-row items-center justify-center gap-2 sm:gap-2 md:gap-3 shadow-sm">
@@ -182,6 +194,13 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com' }: Da
               className="w-full lg:w-auto px-3 sm:px-3 md:px-3.5 py-2 sm:py-2 border border-[#ddd] rounded-md text-xs sm:text-[13px] bg-white text-[#333] truncate"
             />
           </div>
+          <button 
+            onClick={() => setShowFaceChecking(true)}
+            className="px-3 sm:px-4 py-1.5 sm:py-2 bg-[#3b82f6] hover:bg-[#2563eb] text-white rounded-md text-xs sm:text-[13px] font-medium transition-colors flex-shrink-0"
+            title="Face Checking"
+          >
+            Face Checking
+          </button>
           {onLogout && (
             <button 
               onClick={onLogout}
@@ -191,9 +210,6 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com' }: Da
               Keluar
             </button>
           )}
-          <button className="bg-transparent border-none text-xl cursor-pointer p-1.5 text-[#666] flex items-center justify-center w-8 h-8 rounded transition-colors hover:bg-[#f5f5f5] flex-shrink-0">
-            <span className="block leading-none">⋯</span>
-          </button>
         </div>
       </nav>
 

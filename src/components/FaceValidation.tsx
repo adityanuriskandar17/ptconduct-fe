@@ -489,9 +489,6 @@ const FaceValidation = ({ member, onBack }: FaceValidationProps) => {
               className="w-full lg:w-auto px-2 sm:px-3 md:px-3.5 py-1.5 sm:py-2 border border-[#ddd] rounded-md text-xs sm:text-[13px] bg-white text-[#333] truncate"
             />
           </div>
-          <button className="bg-transparent border-none text-xl cursor-pointer p-1.5 text-[#666] flex items-center justify-center w-8 h-8 rounded transition-colors hover:bg-[#f5f5f5] flex-shrink-0">
-            <span className="block leading-none">⋯</span>
-          </button>
         </div>
       </nav>
 
