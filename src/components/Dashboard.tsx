@@ -26,12 +26,13 @@ interface Member {
 interface DashboardProps {
   onLogout?: () => void;
   userEmail?: string;
+  authToken?: string;
 }
 
-const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com' }: DashboardProps) => {
+const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', authToken = '' }: DashboardProps) => {
   const [currentDateTime, setCurrentDateTime] = useState(new Date());
-  const [gateChecked, setGateChecked] = useState(true);
-  const [bookingChecked, setBookingChecked] = useState(true);
+  const [gateChecked, setGateChecked] = useState(false);
+  const [bookingChecked, setBookingChecked] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDate, setSelectedDate] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -45,6 +46,12 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com' }: Da
   const [showFaceChecking, setShowFaceChecking] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5;
+  const [members, setMembers] = useState<Member[]>([]);
+  const [isLoadingData, setIsLoadingData] = useState(false);
+  const [totalBooking, setTotalBooking] = useState(8450);
+  const [validated, setValidated] = useState(125);
+  const [notValidated, setNotValidated] = useState(100);
+  const [searchDebounce, setSearchDebounce] = useState('');
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -74,64 +81,124 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com' }: Da
     return formatDate(date) + ' ' + formatTime(date);
   };
 
-  // Sample data
-  const [members] = useState<Member[]>([
-    {
-      id: 1,
-      name: 'Thio Irfan Siswanto',
-      pt: 'Moh Rizal',
-      start: '2026-01-16T14:00:00',
-      end: '14:00',
-      gateTime: '2026-01-16T14:00:00',
-      gateStatus: true,
-      bookingStatus: true,
-      faceStatus: false,
-    },
-    {
-      id: 2,
-      name: 'Thio Irfan Siswanto',
-      pt: 'Moh Rizal',
-      start: '2026-01-16T14:00:00',
-      end: '14:00',
-      gateTime: '2026-01-16T14:00:00',
-      gateStatus: true,
-      bookingStatus: true,
-      faceStatus: false,
-    },
-    {
-      id: 3,
-      name: 'Thio Irfan Siswanto',
-      pt: 'Moh Rizal',
-      start: '2026-01-16T14:00:00',
-      end: '14:00',
-      gateTime: '2026-01-16T14:00:00',
-      gateStatus: true,
-      bookingStatus: true,
-      faceStatus: false,
-    },
-    {
-      id: 4,
-      name: 'Thio Irfan Siswanto',
-      pt: 'Moh Rizal',
-      start: '2026-01-16T14:00:00',
-      end: '14:00',
-      gateTime: '2026-01-16T14:00:00',
-      gateStatus: true,
-      bookingStatus: true,
-      faceStatus: false,
-    },
-  ]);
+  // Fetch dashboard data from API with filters
+  const fetchDashboardData = async () => {
+    if (!authToken) {
+      console.warn('No auth token available');
+      return;
+    }
 
-  const totalBooking = 8450;
-  const validated = 125;
-  const notValidated = 100;
+    setIsLoadingData(true);
+    try {
+      const apiUrl = import.meta.env.VITE_API_PTCONDUCT || 'http://127.0.0.1:8088';
+      
+      // Build query parameters
+      const queryParams = new URLSearchParams();
+      
+      // Filter by date
+      if (selectedDate) {
+        queryParams.append('start_date', selectedDate);
+      }
+      
+      // Filter by member name (from search query with debounce)
+      if (searchDebounce.trim()) {
+        queryParams.append('nama_member', searchDebounce.trim());
+      }
+      
+      // Filter by gate status
+      if (gateChecked) {
+        queryParams.append('gate', '1');
+      }
+      
+      // Filter by booking status
+      if (bookingChecked) {
+        queryParams.append('booking', '1');
+      }
+      
+      const dashboardEndpoint = `${apiUrl}/api/ptconduct/dashboard?${queryParams.toString()}`;
 
-  const filteredMembers = members.filter((member) => {
-    const matchesSearch = 
-      member.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      member.pt.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesSearch;
-  });
+      const response = await fetch(dashboardEndpoint, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      // Map API response to Member interface based on actual API structure
+      // Response structure: { ok: true, data: [...], club: "all", count: 1, role_id: 1 }
+      if (data.ok && Array.isArray(data.data) && data.data.length > 0) {
+        const mappedMembers: Member[] = data.data.map((item: any, index: number) => ({
+          id: item.id || index + 1,
+          name: item.nama_member || '',
+          pt: item.nama_pt || '',
+          start: item.start_time || '',
+          end: item.end_time || '',
+          gateTime: item.gate_time || '',
+          // gateStatus: true if gate === 1, false if gate === 0
+          gateStatus: item.gate === 1,
+          // bookingStatus: true if booking === 1, false if booking === 0
+          bookingStatus: item.booking === 1,
+          // faceStatus: true if both face_booking_member === 1 AND face_booking_pt === 1
+          faceStatus: item.face_booking_member === 1 && item.face_booking_pt === 1,
+        }));
+        setMembers(mappedMembers);
+        
+        // Calculate summary statistics from the mapped data
+        const validatedCount = mappedMembers.filter(m => m.faceStatus).length;
+        const notValidatedCount = mappedMembers.filter(m => !m.faceStatus).length;
+        
+        // Update total booking from count or use length of data
+        if (data.count !== undefined) {
+          setTotalBooking(data.count);
+        } else {
+          setTotalBooking(mappedMembers.length);
+        }
+        
+        setValidated(validatedCount);
+        setNotValidated(notValidatedCount);
+      } else if (data.ok && Array.isArray(data.data) && data.data.length === 0) {
+        // Empty data
+        setMembers([]);
+        setTotalBooking(0);
+        setValidated(0);
+        setNotValidated(0);
+      }
+
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
+      // Keep default/empty data on error
+    } finally {
+      setIsLoadingData(false);
+    }
+  };
+
+  // Debounce search query to avoid too many API calls
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearchDebounce(searchQuery);
+    }, 500); // Wait 500ms after user stops typing
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Fetch data when component mounts, token changes, or filters change
+  useEffect(() => {
+    if (authToken) {
+      fetchDashboardData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authToken, selectedDate, searchDebounce, gateChecked, bookingChecked]);
+
+  // Filtering is now done on the backend via API
+  // No need for client-side filtering since API handles it
+  const filteredMembers = members;
 
   // Pagination calculations
   const totalPages = Math.ceil(filteredMembers.length / itemsPerPage);
@@ -139,10 +206,10 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com' }: Da
   const endIndex = startIndex + itemsPerPage;
   const currentMembers = filteredMembers.slice(startIndex, endIndex);
 
-  // Reset to page 1 when search query changes
+  // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery]);
+  }, [searchDebounce, selectedDate, gateChecked, bookingChecked]);
 
   // Show Face Checking page if needed
   if (showFaceChecking) {
@@ -321,26 +388,37 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com' }: Da
           </div>
         </div>
 
+        {/* Loading State */}
+        {isLoadingData && (
+          <div className="flex items-center justify-center py-8">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#3b82f6] mx-auto mb-2"></div>
+              <p className="text-sm text-gray-600">Memuat data...</p>
+            </div>
+          </div>
+        )}
+
         {/* Data Table */}
-        <div className="overflow-x-auto -mx-4 md:mx-0 px-4 md:px-0">
-          <table className="w-full border-collapse text-xs md:text-sm min-w-[500px] xl:min-w-[800px]" style={{ tableLayout: 'auto' }}>
-            <thead className="bg-[#f8f9fa]">
-              <tr>
-                <th className="p-2 md:p-2.5 lg:p-3 text-center font-semibold text-[#333] border-b-2 border-[#e5e7eb] w-10 md:w-12 text-xs md:text-sm">No</th>
-                <th className="p-2 md:p-2.5 lg:p-3 text-left font-semibold text-[#333] border-b-2 border-[#e5e7eb] text-xs md:text-sm" style={{ width: '150px', maxWidth: '150px', wordWrap: 'break-word', overflowWrap: 'break-word' }}>Member</th>
-                <th className="p-2 md:p-2.5 lg:p-3 text-left font-semibold text-[#333] border-b-2 border-[#e5e7eb] text-xs md:text-sm" style={{ width: '120px', maxWidth: '120px', wordWrap: 'break-word', overflowWrap: 'break-word' }}>PT</th>
-                <th className="p-2 md:p-2.5 lg:p-3 text-left font-semibold text-[#333] border-b-2 border-[#e5e7eb] text-xs md:text-sm" style={{ width: '160px', maxWidth: '160px' }}>Start</th>
-                <th className="hidden xl:table-cell p-2 md:p-2.5 lg:p-3 text-left font-semibold text-[#333] border-b-2 border-[#e5e7eb] text-xs md:text-sm w-16">End</th>
-                <th className="hidden xl:table-cell p-2 md:p-2.5 lg:p-3 text-left font-semibold text-[#333] border-b-2 border-[#e5e7eb] text-xs md:text-sm" style={{ width: '160px', maxWidth: '160px' }}>Gate Time</th>
-                <th className="hidden md:table-cell p-2 md:p-2.5 lg:p-3 text-left font-semibold text-[#333] border-b-2 border-[#e5e7eb] text-xs md:text-sm w-[110px]">Status</th>
-                <th className="p-2 md:p-2.5 lg:p-3 text-center font-semibold text-[#333] border-b-2 border-[#e5e7eb] text-xs md:text-sm" style={{ width: '120px', minWidth: '120px' }}>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {currentMembers.length > 0 ? (
-                currentMembers.map((member, index) => (
-                  <tr key={member.id} className="hover:bg-[#f9fafb]">
-                    <td className="p-2 md:p-2.5 lg:p-3 border-b border-[#e5e7eb] text-[#333] text-center text-xs md:text-sm">{startIndex + index + 1}</td>
+        {!isLoadingData && (
+          <div className="overflow-x-auto -mx-4 md:mx-0 px-4 md:px-0">
+            <table className="w-full border-collapse text-xs md:text-sm min-w-[500px] xl:min-w-[800px]" style={{ tableLayout: 'auto' }}>
+              <thead className="bg-[#f8f9fa]">
+                <tr>
+                  <th className="p-2 md:p-2.5 lg:p-3 text-center font-semibold text-[#333] border-b-2 border-[#e5e7eb] w-10 md:w-12 text-xs md:text-sm">No</th>
+                  <th className="p-2 md:p-2.5 lg:p-3 text-left font-semibold text-[#333] border-b-2 border-[#e5e7eb] text-xs md:text-sm" style={{ width: '150px', maxWidth: '150px', wordWrap: 'break-word', overflowWrap: 'break-word' }}>Member</th>
+                  <th className="p-2 md:p-2.5 lg:p-3 text-left font-semibold text-[#333] border-b-2 border-[#e5e7eb] text-xs md:text-sm" style={{ width: '120px', maxWidth: '120px', wordWrap: 'break-word', overflowWrap: 'break-word' }}>PT</th>
+                  <th className="p-2 md:p-2.5 lg:p-3 text-left font-semibold text-[#333] border-b-2 border-[#e5e7eb] text-xs md:text-sm" style={{ width: '160px', maxWidth: '160px' }}>Start</th>
+                  <th className="hidden xl:table-cell p-2 md:p-2.5 lg:p-3 text-left font-semibold text-[#333] border-b-2 border-[#e5e7eb] text-xs md:text-sm w-16">End</th>
+                  <th className="hidden xl:table-cell p-2 md:p-2.5 lg:p-3 text-left font-semibold text-[#333] border-b-2 border-[#e5e7eb] text-xs md:text-sm" style={{ width: '160px', maxWidth: '160px' }}>Gate Time</th>
+                  <th className="hidden md:table-cell p-2 md:p-2.5 lg:p-3 text-left font-semibold text-[#333] border-b-2 border-[#e5e7eb] text-xs md:text-sm w-[110px]">Status</th>
+                  <th className="p-2 md:p-2.5 lg:p-3 text-center font-semibold text-[#333] border-b-2 border-[#e5e7eb] text-xs md:text-sm" style={{ width: '120px', minWidth: '120px' }}>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {currentMembers.length > 0 ? (
+                  currentMembers.map((member, index) => (
+                    <tr key={member.id} className="hover:bg-[#f9fafb]">
+                      <td className="p-2 md:p-2.5 lg:p-3 border-b border-[#e5e7eb] text-[#333] text-center text-xs md:text-sm">{startIndex + index + 1}</td>
                   <td className="p-2 md:p-2.5 lg:p-3 border-b border-[#e5e7eb] text-[#333] text-left text-xs md:text-sm" style={{ width: '150px', maxWidth: '150px', wordWrap: 'break-word', overflowWrap: 'break-word', whiteSpace: 'normal' }}>{member.name}</td>
                   <td className="p-2 md:p-2.5 lg:p-3 border-b border-[#e5e7eb] text-[#333] text-left text-xs md:text-sm" style={{ width: '120px', maxWidth: '120px', wordWrap: 'break-word', overflowWrap: 'break-word', whiteSpace: 'normal' }}>{member.pt}</td>
                   <td className="p-2 md:p-2.5 lg:p-3 border-b border-[#e5e7eb] text-[#333] text-left text-xs" style={{ width: '160px', maxWidth: '160px', wordWrap: 'break-word', overflowWrap: 'break-word', whiteSpace: 'normal' }}>{formatDateTime(member.start)}</td>
@@ -406,9 +484,10 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com' }: Da
             </tbody>
           </table>
         </div>
+        )}
 
         {/* Pagination */}
-        {filteredMembers.length > 0 && (
+        {!isLoadingData && filteredMembers.length > 0 && (
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-4 sm:mt-6 pt-4 border-t border-[#e5e7eb]">
             <div className="text-sm text-gray-600">
               Menampilkan {startIndex + 1} - {Math.min(endIndex, filteredMembers.length)} dari {filteredMembers.length} data

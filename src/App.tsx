@@ -6,35 +6,47 @@ import './App.css'
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [userEmail, setUserEmail] = useState<string>('')
+  const [authToken, setAuthToken] = useState<string>('')
   const [isLoading, setIsLoading] = useState(true)
 
   // Check if user is already logged in (from localStorage)
   useEffect(() => {
     const savedEmail = localStorage.getItem('ptconduct_user_email')
+    const savedToken = localStorage.getItem('ptconduct_auth_token')
     const savedAuth = localStorage.getItem('ptconduct_authenticated')
     
-    if (savedEmail && savedAuth === 'true') {
+    if (savedEmail && savedToken && savedAuth === 'true') {
       setUserEmail(savedEmail)
+      setAuthToken(savedToken)
       setIsAuthenticated(true)
+    } else {
+      // Clear invalid data
+      localStorage.removeItem('ptconduct_user_email')
+      localStorage.removeItem('ptconduct_auth_token')
+      localStorage.removeItem('ptconduct_authenticated')
     }
     setIsLoading(false)
   }, [])
 
-  const handleLogin = (email: string) => {
+  const handleLogin = (email: string, token: string) => {
     // Save to localStorage
     localStorage.setItem('ptconduct_user_email', email)
+    localStorage.setItem('ptconduct_auth_token', token)
     localStorage.setItem('ptconduct_authenticated', 'true')
     
     setUserEmail(email)
+    setAuthToken(token)
     setIsAuthenticated(true)
   }
 
   const handleLogout = () => {
     // Clear localStorage
     localStorage.removeItem('ptconduct_user_email')
+    localStorage.removeItem('ptconduct_auth_token')
     localStorage.removeItem('ptconduct_authenticated')
     
     setUserEmail('')
+    setAuthToken('')
     setIsAuthenticated(false)
   }
 
@@ -56,7 +68,7 @@ function App() {
   }
 
   // Show dashboard if authenticated
-  return <Dashboard onLogout={handleLogout} userEmail={userEmail} />
+  return <Dashboard onLogout={handleLogout} userEmail={userEmail} authToken={authToken} />
 }
 
 export default App

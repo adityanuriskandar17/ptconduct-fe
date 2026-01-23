@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 interface LoginProps {
-  onLogin: (email: string) => void;
+  onLogin: (email: string, token: string) => void;
 }
 
 const Login = ({ onLogin }: LoginProps) => {
@@ -30,17 +30,54 @@ const Login = ({ onLogin }: LoginProps) => {
 
     setIsLoading(true);
 
-    // Simulasi login (bisa diganti dengan API call)
-    setTimeout(() => {
-      // Untuk demo, kita terima login apapun
-      // Di production, ini harus diganti dengan validasi dari backend
-      if (password.length >= 6) {
-        onLogin(email);
-      } else {
-        setError('Password minimal 6 karakter');
+    try {
+      // Get API URL from environment variable
+      const apiUrl = import.meta.env.VITE_API_PTCONDUCT || 'http://127.0.0.1:8088';
+      const loginEndpoint = `${apiUrl}/api/login/ptconduct`;
+
+      const response = await fetch(loginEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: email,
+          password: password,
+        }),
+      });
+
+      if (!response.ok) {
+        // Coba parse error message
+        let errorMessage = 'Email atau password salah';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorData.error || errorMessage;
+        } catch (e) {
+          // Jika response bukan JSON, gunakan status text
+          errorMessage = response.statusText || errorMessage;
+        }
+        setError(errorMessage);
         setIsLoading(false);
+        return;
       }
-    }, 500);
+
+      // Login berhasil
+      const data = await response.json();
+      // Extract token from response (adjust based on actual API response structure)
+      const token = data.token || data.data?.token || data.access_token || data.accessToken;
+      
+      if (!token) {
+        setError('Token tidak ditemukan dalam response');
+        setIsLoading(false);
+        return;
+      }
+      
+      onLogin(email, token);
+    } catch (error) {
+      console.error('Login error:', error);
+      setError('Terjadi kesalahan saat menghubungi server. Pastikan server API berjalan.');
+      setIsLoading(false);
+    }
   };
 
   return (
