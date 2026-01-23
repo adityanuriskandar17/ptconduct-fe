@@ -91,9 +91,11 @@ const FaceValidation = ({ member, onBack }: FaceValidationProps) => {
     frameCount: 0
   });
   const EAR_DROP_RATIO = 0.5; // EAR harus turun 50% dari baseline untuk dianggap tertutup
-  const MIN_CLOSED_FRAMES = 1; // Minimum frames mata harus tertutup (reduced for fast blinks)
-  const MIN_OPEN_FRAMES = 1; // Minimum frames mata harus terbuka setelah tertutup (reduced for fast blinks)
+  const MIN_CLOSED_FRAMES = 0; // Minimum frames mata harus tertutup (0 untuk deteksi sangat cepat)
+  const MIN_OPEN_FRAMES = 0; // Minimum frames mata harus terbuka setelah tertutup (0 untuk deteksi sangat cepat)
   const BASELINE_FRAMES = 20; // Frames untuk calculate baseline (reduced for faster initialization)
+  const FAST_BLINK_DROP_THRESHOLD = 0.35; // Threshold untuk deteksi blink sangat cepat (35% drop)
+  const FAST_BLINK_RECOVERY_THRESHOLD = 0.75; // Threshold untuk recovery blink cepat (75% dari baseline)
   const [currentEAR, setCurrentEAR] = useState<number | null>(null);
   const [baselineEAR, setBaselineEAR] = useState<number | null>(null);
 
@@ -178,27 +180,49 @@ const FaceValidation = ({ member, onBack }: FaceValidationProps) => {
         
         // Calculate dynamic threshold based on baseline
         const dynamicThreshold = state.baselineEAR * EAR_DROP_RATIO;
+        const fastBlinkThreshold = state.baselineEAR * FAST_BLINK_DROP_THRESHOLD;
+        const fastBlinkRecovery = state.baselineEAR * FAST_BLINK_RECOVERY_THRESHOLD;
         
         // State machine for blink detection using relative threshold
         const isClosed = avgEAR < dynamicThreshold;
+        const isFastBlinkClosed = avgEAR < fastBlinkThreshold;
+        const isRecovered = avgEAR >= fastBlinkRecovery;
         const earDropPercent = ((state.baselineEAR - avgEAR) / state.baselineEAR) * 100;
+        const earDropRatio = avgEAR / state.baselineEAR;
+        
+        // Track previous EAR for detecting rapid changes
+        const previousEAR = state.lastEAR;
+        const rapidDrop = previousEAR > 0 && ((previousEAR - avgEAR) / previousEAR) > 0.3; // 30% drop in one frame
         
         switch (state.state) {
           case 'OPEN':
-            if (isClosed && state.frameCount > BASELINE_FRAMES) {
-              state.state = 'CLOSING';
-              state.closedFrames = 1;
-              state.openFrames = 0;
-              console.log('🔄 Transition: OPEN -> CLOSING, EAR:', avgEAR.toFixed(3), 
-                'Baseline:', state.baselineEAR.toFixed(3), 
-                'Drop:', earDropPercent.toFixed(1) + '%');
+            if (state.frameCount > BASELINE_FRAMES) {
+              // Check for very fast blink (direct OPEN -> CLOSED -> OPEN in rapid succession)
+              if (isFastBlinkClosed && rapidDrop) {
+                // Ultra-fast blink detected - go directly to CLOSED
+                state.state = 'CLOSED';
+                state.closedFrames = 1;
+                state.openFrames = 0;
+                setIsBlinking(true);
+                console.log('⚡⚡ Ultra-fast blink detected (OPEN->CLOSED), EAR:', avgEAR.toFixed(3),
+                  'Previous:', previousEAR.toFixed(3),
+                  'Drop:', earDropPercent.toFixed(1) + '%');
+              } else if (isClosed) {
+                state.state = 'CLOSING';
+                state.closedFrames = 1;
+                state.openFrames = 0;
+                console.log('🔄 Transition: OPEN -> CLOSING, EAR:', avgEAR.toFixed(3), 
+                  'Baseline:', state.baselineEAR.toFixed(3), 
+                  'Drop:', earDropPercent.toFixed(1) + '%');
+              }
             }
             break;
             
           case 'CLOSING':
-            if (isClosed) {
+            if (isClosed || isFastBlinkClosed) {
               state.closedFrames++;
-              if (state.closedFrames >= MIN_CLOSED_FRAMES) {
+              // Immediately transition to CLOSED for fast blinks
+              if (state.closedFrames > MIN_CLOSED_FRAMES || isFastBlinkClosed || rapidDrop) {
                 state.state = 'CLOSED';
                 setIsBlinking(true);
                 console.log('👁️ Eyes CLOSED, EAR:', avgEAR.toFixed(3), 
@@ -209,7 +233,7 @@ const FaceValidation = ({ member, onBack }: FaceValidationProps) => {
             } else {
               // Eyes opened before reaching minimum closed frames
               // For very fast blinks, if EAR dropped significantly, count it immediately
-              if (earDropPercent > 40 && state.closedFrames > 0) {
+              if (earDropPercent > 30 && state.closedFrames > 0) {
                 // Fast blink detected - skip to CLOSED state immediately
                 state.state = 'CLOSED';
                 setIsBlinking(true);
@@ -224,7 +248,7 @@ const FaceValidation = ({ member, onBack }: FaceValidationProps) => {
             break;
             
           case 'CLOSED':
-            if (!isClosed) {
+            if (!isClosed || isRecovered) {
               state.state = 'OPENING';
               state.openFrames = 1;
               console.log('🔄 Transition: CLOSED -> OPENING, EAR:', avgEAR.toFixed(3),
@@ -233,18 +257,23 @@ const FaceValidation = ({ member, onBack }: FaceValidationProps) => {
             break;
             
           case 'OPENING':
-            if (!isClosed) {
+            if (!isClosed || isRecovered) {
               state.openFrames++;
               // For fast blinks, detect immediately if EAR is back to normal range
-              const isBackToNormal = avgEAR >= (state.baselineEAR * 0.8);
+              // Allow immediate detection for very fast blinks
+              const canDetectBlink = state.openFrames > MIN_OPEN_FRAMES || 
+                                    isRecovered || 
+                                    (earDropRatio >= 0.7 && state.openFrames > 0) ||
+                                    (rapidDrop && avgEAR > state.baselineEAR * 0.65);
               
-              if (state.openFrames >= MIN_OPEN_FRAMES || (isBackToNormal && state.openFrames > 0)) {
+              if (canDetectBlink) {
                 // Complete blink detected!
                 const newCount = blinkCount + 1;
                 console.log('✅✅✅ BLINK DETECTED! Count:', newCount, 
                   'EAR:', avgEAR.toFixed(3),
                   'Baseline:', state.baselineEAR.toFixed(3),
-                  'Open frames:', state.openFrames);
+                  'Open frames:', state.openFrames,
+                  'Recovery:', (earDropRatio * 100).toFixed(1) + '%');
                 setBlinkCount(prev => prev + 1);
                 setIsBlinking(true);
                 
@@ -265,6 +294,9 @@ const FaceValidation = ({ member, onBack }: FaceValidationProps) => {
             }
             break;
         }
+        
+        // Update last EAR for next frame comparison
+        state.lastEAR = avgEAR;
         
         // Draw landmarks on canvas for visual feedback
         if (canvasRef.current && videoRef.current) {
