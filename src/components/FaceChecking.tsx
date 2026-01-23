@@ -135,30 +135,30 @@ const FaceChecking = ({ onBack, authToken }: FaceCheckingProps) => {
       
       if (data.ok && data.matched && data.nama && data.email && data.club) {
         setSubmitStatus('success');
+        // Update matchData dengan data baru (akan mengganti data lama jika ada)
         setMatchData({
           nama: data.nama,
           email: data.email,
           club: data.club
         });
         console.log('Face check response:', data);
+        
+        // Reset success status indicator after 3 seconds (tapi data tetap ditampilkan)
+        setTimeout(() => {
+          setSubmitStatus('idle');
+        }, 3000);
       } else {
         setSubmitStatus('error');
-        setMatchData(null);
+        // Jangan hapus matchData saat error, biarkan data terakhir tetap ditampilkan
       }
-      
-      // Reset success status after 5 seconds
-      setTimeout(() => {
-        setSubmitStatus('idle');
-      }, 5000);
     } catch (error) {
       console.error('Error sending image to API:', error);
       setSubmitStatus('error');
       
-      // Reset error status after 5 seconds
+      // Reset error status after 3 seconds (tapi data tetap ditampilkan)
       setTimeout(() => {
         setSubmitStatus('idle');
-        setMatchData(null);
-      }, 5000);
+      }, 3000);
     } finally {
       setIsSubmitting(false);
     }
@@ -420,7 +420,7 @@ const FaceChecking = ({ onBack, authToken }: FaceCheckingProps) => {
     setFaceDetected(false);
     setBlinkCount(0);
     setIsBlinking(false);
-    setMatchData(null);
+    // Jangan hapus matchData, biarkan data terakhir tetap ditampilkan
     setSubmitStatus('idle');
     setIsSubmitting(false);
     blinkStateRef.current = { 
@@ -466,7 +466,7 @@ const FaceChecking = ({ onBack, authToken }: FaceCheckingProps) => {
       setFaceDetected(false);
       setBlinkCount(0);
       setIsBlinking(false);
-      setMatchData(null);
+      // Jangan hapus matchData, biarkan data terakhir tetap ditampilkan
       setSubmitStatus('idle');
       setIsSubmitting(false);
       blinkStateRef.current = { 
@@ -566,7 +566,7 @@ const FaceChecking = ({ onBack, authToken }: FaceCheckingProps) => {
         )}
 
         {/* Match Result Display */}
-        {matchData && submitStatus === 'success' && (
+        {matchData && (
           <div className="mb-6 sm:mb-8">
             <div className="bg-green-50 border-2 border-green-200 rounded-lg p-4 sm:p-6">
               <h3 className="text-lg font-bold text-green-800 mb-4 text-center">
