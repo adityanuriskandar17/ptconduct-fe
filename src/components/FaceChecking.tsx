@@ -9,12 +9,72 @@ interface FaceCheckingProps {
 const FaceChecking = ({ onBack }: FaceCheckingProps) => {
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [faceDetected, setFaceDetected] = useState(false);
+  const [blinkCount, setBlinkCount] = useState(0);
+  const [isBlinking, setIsBlinking] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const faceMeshRef = useRef<FaceMesh | null>(null);
   const cameraRef = useRef<Camera | null>(null);
   const isSetupRef = useRef(false);
+
+  // Eye landmarks indices (MediaPipe Face Mesh) - using key points for EAR calculation
+  const LEFT_EYE_TOP = 159;
+  const LEFT_EYE_BOTTOM = 145;
+  const LEFT_EYE_LEFT = 33;
+  const LEFT_EYE_RIGHT = 133;
+  const LEFT_EYE_TOP_INNER = 158;
+  const LEFT_EYE_BOTTOM_INNER = 153;
+  
+  const RIGHT_EYE_TOP = 386;
+  const RIGHT_EYE_BOTTOM = 374;
+  const RIGHT_EYE_LEFT = 362;
+  const RIGHT_EYE_RIGHT = 263;
+  const RIGHT_EYE_TOP_INNER = 385;
+  const RIGHT_EYE_BOTTOM_INNER = 380;
+  
+  // Eye Aspect Ratio calculation
+  const calculateEAR = (landmarks: any[], eyeTop: number, eyeBottom: number, eyeLeft: number, eyeRight: number, eyeTopInner: number, eyeBottomInner: number) => {
+    const top = landmarks[eyeTop];
+    const bottom = landmarks[eyeBottom];
+    const left = landmarks[eyeLeft];
+    const right = landmarks[eyeRight];
+    const topInner = landmarks[eyeTopInner];
+    const bottomInner = landmarks[eyeBottomInner];
+    
+    const vertical1 = Math.sqrt(
+      Math.pow(top.x - bottom.x, 2) +
+      Math.pow(top.y - bottom.y, 2)
+    );
+    const vertical2 = Math.sqrt(
+      Math.pow(topInner.x - bottomInner.x, 2) +
+      Math.pow(topInner.y - bottomInner.y, 2)
+    );
+    
+    const horizontal = Math.sqrt(
+      Math.pow(left.x - right.x, 2) +
+      Math.pow(left.y - right.y, 2)
+    );
+    
+    if (horizontal === 0) return 1.0;
+    return (vertical1 + vertical2) / (2.0 * horizontal);
+  };
+  
+  const blinkStateRef = useRef({ 
+    state: 'OPEN' as 'OPEN' | 'CLOSING' | 'CLOSED' | 'OPENING',
+    closedFrames: 0,
+    openFrames: 0,
+    lastEAR: 1.0,
+    baselineEAR: 1.0,
+    earHistory: [] as number[],
+    frameCount: 0
+  });
+  const EAR_DROP_RATIO = 0.5;
+  const MIN_CLOSED_FRAMES = 0;
+  const MIN_OPEN_FRAMES = 0;
+  const BASELINE_FRAMES = 20;
+  const FAST_BLINK_DROP_THRESHOLD = 0.35;
+  const FAST_BLINK_RECOVERY_THRESHOLD = 0.75;
 
   const setupFaceMesh = () => {
     if (!videoRef.current || isSetupRef.current) return;
@@ -36,6 +96,120 @@ const FaceChecking = ({ onBack }: FaceCheckingProps) => {
     faceMesh.onResults((results) => {
       if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
         setFaceDetected(true);
+        const landmarks = results.multiFaceLandmarks[0];
+        
+        // Calculate EAR for both eyes
+        const leftEAR = calculateEAR(
+          landmarks, 
+          LEFT_EYE_TOP, LEFT_EYE_BOTTOM, LEFT_EYE_LEFT, LEFT_EYE_RIGHT,
+          LEFT_EYE_TOP_INNER, LEFT_EYE_BOTTOM_INNER
+        );
+        const rightEAR = calculateEAR(
+          landmarks,
+          RIGHT_EYE_TOP, RIGHT_EYE_BOTTOM, RIGHT_EYE_LEFT, RIGHT_EYE_RIGHT,
+          RIGHT_EYE_TOP_INNER, RIGHT_EYE_BOTTOM_INNER
+        );
+        const avgEAR = (leftEAR + rightEAR) / 2.0;
+        
+        const state = blinkStateRef.current;
+        state.frameCount++;
+        state.lastEAR = avgEAR;
+        
+        // Calculate baseline EAR
+        if (state.frameCount <= BASELINE_FRAMES) {
+          state.earHistory.push(avgEAR);
+          if (state.frameCount === BASELINE_FRAMES) {
+            const sum = state.earHistory.reduce((a, b) => a + b, 0);
+            state.baselineEAR = sum / state.earHistory.length;
+          }
+        } else {
+          state.baselineEAR = state.baselineEAR * 0.99 + avgEAR * 0.01;
+        }
+        
+        // Calculate dynamic threshold
+        const dynamicThreshold = state.baselineEAR * EAR_DROP_RATIO;
+        const fastBlinkThreshold = state.baselineEAR * FAST_BLINK_DROP_THRESHOLD;
+        const fastBlinkRecovery = state.baselineEAR * FAST_BLINK_RECOVERY_THRESHOLD;
+        
+        const isClosed = avgEAR < dynamicThreshold;
+        const isFastBlinkClosed = avgEAR < fastBlinkThreshold;
+        const isRecovered = avgEAR >= fastBlinkRecovery;
+        const earDropPercent = ((state.baselineEAR - avgEAR) / state.baselineEAR) * 100;
+        const earDropRatio = avgEAR / state.baselineEAR;
+        
+        const previousEAR = state.lastEAR;
+        const rapidDrop = previousEAR > 0 && ((previousEAR - avgEAR) / previousEAR) > 0.3;
+        
+        // Blink detection state machine
+        switch (state.state) {
+          case 'OPEN':
+            if (state.frameCount > BASELINE_FRAMES) {
+              if (isFastBlinkClosed && rapidDrop) {
+                state.state = 'CLOSED';
+                state.closedFrames = 1;
+                state.openFrames = 0;
+                setIsBlinking(true);
+              } else if (isClosed) {
+                state.state = 'CLOSING';
+                state.closedFrames = 1;
+                state.openFrames = 0;
+              }
+            }
+            break;
+            
+          case 'CLOSING':
+            if (isClosed || isFastBlinkClosed) {
+              state.closedFrames++;
+              if (state.closedFrames > MIN_CLOSED_FRAMES || isFastBlinkClosed || rapidDrop) {
+                state.state = 'CLOSED';
+                setIsBlinking(true);
+              }
+            } else {
+              if (earDropPercent > 30 && state.closedFrames > 0) {
+                state.state = 'CLOSED';
+                setIsBlinking(true);
+              } else {
+                state.state = 'OPEN';
+                state.closedFrames = 0;
+              }
+            }
+            break;
+            
+          case 'CLOSED':
+            if (!isClosed || isRecovered) {
+              state.state = 'OPENING';
+              state.openFrames = 1;
+            }
+            break;
+            
+          case 'OPENING':
+            if (!isClosed || isRecovered) {
+              state.openFrames++;
+              const canDetectBlink = state.openFrames > MIN_OPEN_FRAMES || 
+                                    isRecovered || 
+                                    (earDropRatio >= 0.7 && state.openFrames > 0) ||
+                                    (rapidDrop && avgEAR > state.baselineEAR * 0.65);
+              
+              if (canDetectBlink) {
+                setBlinkCount(prev => prev + 1);
+                setIsBlinking(true);
+                
+                state.state = 'OPEN';
+                state.closedFrames = 0;
+                state.openFrames = 0;
+                
+                setTimeout(() => {
+                  setIsBlinking(false);
+                }, 300);
+              }
+            } else {
+              state.state = 'CLOSED';
+              state.openFrames = 0;
+            }
+            break;
+        }
+        
+        state.lastEAR = avgEAR;
         
         // Draw landmarks on canvas for visual feedback
         if (canvasRef.current && videoRef.current) {
@@ -47,25 +221,35 @@ const FaceChecking = ({ onBack }: FaceCheckingProps) => {
             
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             
-            // Draw face landmarks
-            const landmarks = results.multiFaceLandmarks[0];
-            ctx.strokeStyle = '#10b981';
+            // Draw eye landmarks - rectangles around eyes
+            ctx.strokeStyle = isBlinking ? '#ef4444' : '#10b981';
             ctx.lineWidth = 2;
             
-            // Draw face mesh (simplified - just key points)
-            ctx.beginPath();
-            for (let i = 0; i < landmarks.length; i += 5) {
-              const point = landmarks[i];
-              const mirroredX = canvas.width - (point.x * canvas.width);
-              const y = point.y * canvas.height;
-              
-              if (i === 0) {
-                ctx.moveTo(mirroredX, y);
-              } else {
-                ctx.lineTo(mirroredX, y);
-              }
-            }
-            ctx.stroke();
+            // Left eye rectangle
+            const leftEyeTop = landmarks[LEFT_EYE_TOP];
+            const leftEyeBottom = landmarks[LEFT_EYE_BOTTOM];
+            const leftEyeLeft = landmarks[LEFT_EYE_LEFT];
+            const leftEyeRight = landmarks[LEFT_EYE_RIGHT];
+            
+            const leftEyeX = canvas.width - (Math.min(leftEyeLeft.x, leftEyeRight.x) * canvas.width);
+            const leftEyeY = Math.min(leftEyeTop.y, leftEyeBottom.y) * canvas.height;
+            const leftEyeWidth = Math.abs((leftEyeRight.x - leftEyeLeft.x) * canvas.width);
+            const leftEyeHeight = Math.abs((leftEyeBottom.y - leftEyeTop.y) * canvas.height);
+            
+            ctx.strokeRect(leftEyeX - leftEyeWidth, leftEyeY, leftEyeWidth, leftEyeHeight);
+            
+            // Right eye rectangle
+            const rightEyeTop = landmarks[RIGHT_EYE_TOP];
+            const rightEyeBottom = landmarks[RIGHT_EYE_BOTTOM];
+            const rightEyeLeft = landmarks[RIGHT_EYE_LEFT];
+            const rightEyeRight = landmarks[RIGHT_EYE_RIGHT];
+            
+            const rightEyeX = canvas.width - (Math.min(rightEyeLeft.x, rightEyeRight.x) * canvas.width);
+            const rightEyeY = Math.min(rightEyeTop.y, rightEyeBottom.y) * canvas.height;
+            const rightEyeWidth = Math.abs((rightEyeRight.x - rightEyeLeft.x) * canvas.width);
+            const rightEyeHeight = Math.abs((rightEyeBottom.y - rightEyeTop.y) * canvas.height);
+            
+            ctx.strokeRect(rightEyeX - rightEyeWidth, rightEyeY, rightEyeWidth, rightEyeHeight);
           }
         }
       } else {
@@ -134,6 +318,17 @@ const FaceChecking = ({ onBack }: FaceCheckingProps) => {
     }
     setIsCameraActive(false);
     setFaceDetected(false);
+    setBlinkCount(0);
+    setIsBlinking(false);
+    blinkStateRef.current = { 
+      state: 'OPEN', 
+      closedFrames: 0, 
+      openFrames: 0, 
+      lastEAR: 1.0,
+      baselineEAR: 1.0,
+      earHistory: [],
+      frameCount: 0
+    };
     isSetupRef.current = false;
   };
 
@@ -166,6 +361,17 @@ const FaceChecking = ({ onBack }: FaceCheckingProps) => {
         faceMeshRef.current = null;
       }
       setFaceDetected(false);
+      setBlinkCount(0);
+      setIsBlinking(false);
+      blinkStateRef.current = { 
+        state: 'OPEN', 
+        closedFrames: 0, 
+        openFrames: 0, 
+        lastEAR: 1.0,
+        baselineEAR: 1.0,
+        earHistory: [],
+        frameCount: 0
+      };
       isSetupRef.current = false;
     }
   }, [isCameraActive]);
@@ -209,15 +415,30 @@ const FaceChecking = ({ onBack }: FaceCheckingProps) => {
           </div>
         </div>
 
-        {/* Face Detection Status */}
+        {/* Face Detection and Blink Status */}
         {isCameraActive && (
           <div className="mb-6 sm:mb-8">
             <div className="bg-white rounded-lg p-4 border-2 border-gray-200">
-              <div className="flex items-center justify-center gap-3">
-                <div className={`w-3 h-3 rounded-full ${faceDetected ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`}></div>
-                <span className="text-sm font-medium text-gray-700">
-                  {faceDetected ? 'Wajah Terdeteksi' : 'Menunggu Wajah...'}
-                </span>
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className={`w-3 h-3 rounded-full ${faceDetected ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`}></div>
+                  <span className="text-sm font-medium text-gray-700">
+                    {faceDetected ? 'Wajah Terdeteksi' : 'Menunggu Wajah...'}
+                  </span>
+                </div>
+                <div className="flex items-center gap-4 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-600">Blink Count:</span>
+                    <span className={`text-lg font-bold ${isBlinking ? 'text-red-500 scale-125 transition-transform' : 'text-blue-600'}`}>
+                      {blinkCount}
+                    </span>
+                  </div>
+                  {isBlinking && (
+                    <div className="px-3 py-1 bg-red-100 text-red-700 rounded-full text-xs font-semibold animate-pulse">
+                      BLINK DETECTED!
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
