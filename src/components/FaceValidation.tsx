@@ -529,9 +529,16 @@ const FaceValidation = ({ member, onBack }: FaceValidationProps) => {
                   {currentEAR !== null && (
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-gray-500">EAR:</span>
-                      <span className={`text-sm font-mono font-semibold ${currentEAR < EAR_THRESHOLD ? 'text-red-600' : 'text-green-600'}`}>
+                      <span className={`text-sm font-mono font-semibold ${
+                        baselineEAR && currentEAR < (baselineEAR * EAR_DROP_RATIO) ? 'text-red-600' : 'text-green-600'
+                      }`}>
                         {currentEAR.toFixed(3)}
                       </span>
+                      {baselineEAR && (
+                        <span className="text-xs text-gray-400">
+                          (baseline: {baselineEAR.toFixed(2)})
+                        </span>
+                      )}
                     </div>
                   )}
                   {isBlinking && (
