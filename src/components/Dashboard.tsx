@@ -217,7 +217,8 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
       <FaceChecking 
         onBack={() => {
           setShowFaceChecking(false);
-        }} 
+        }}
+        authToken={authToken}
       />
     );
   }

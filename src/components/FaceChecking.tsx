@@ -4,19 +4,24 @@ import { Camera } from '@mediapipe/camera_utils';
 
 interface FaceCheckingProps {
   onBack: () => void;
+  authToken?: string;
 }
 
-const FaceChecking = ({ onBack }: FaceCheckingProps) => {
+const FaceChecking = ({ onBack, authToken }: FaceCheckingProps) => {
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [faceDetected, setFaceDetected] = useState(false);
   const [blinkCount, setBlinkCount] = useState(0);
   const [isBlinking, setIsBlinking] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitStatus, setSubmitStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [matchData, setMatchData] = useState<{ nama: string; email: string; club: string } | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const faceMeshRef = useRef<FaceMesh | null>(null);
   const cameraRef = useRef<Camera | null>(null);
   const isSetupRef = useRef(false);
+  const lastBlinkCaptureRef = useRef<number>(0);
 
   // Eye landmarks indices (MediaPipe Face Mesh) - using key points for EAR calculation
   const LEFT_EYE_TOP = 159;
@@ -75,6 +80,89 @@ const FaceChecking = ({ onBack }: FaceCheckingProps) => {
   const BASELINE_FRAMES = 20;
   const FAST_BLINK_DROP_THRESHOLD = 0.35;
   const FAST_BLINK_RECOVERY_THRESHOLD = 0.75;
+  const BLINK_CAPTURE_COOLDOWN = 2000; // Minimum 2 seconds between captures
+
+  // Function to capture video frame and convert to base64
+  const captureFrameToBase64 = (): string | null => {
+    if (!videoRef.current) return null;
+    
+    const video = videoRef.current;
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    
+    // Draw video frame to canvas (capture original orientation, not mirrored)
+    // CSS transform on video element doesn't affect canvas drawImage
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    
+    // Convert to base64 JPEG
+    return canvas.toDataURL('image/jpeg', 0.8);
+  };
+
+  // Function to send image to API
+  const sendImageToAPI = async (imageBase64: string) => {
+    if (!authToken) {
+      console.error('No auth token available');
+      setSubmitStatus('error');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setSubmitStatus('idle');
+
+    try {
+      const apiUrl = import.meta.env.VITE_API_PTCONDUCT || 'http://127.0.0.1:8088';
+      const response = await fetch(`${apiUrl}/api/ptconduct/check-face`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({
+          image_b64: imageBase64
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
+        throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      if (data.ok && data.matched && data.nama && data.email && data.club) {
+        setSubmitStatus('success');
+        setMatchData({
+          nama: data.nama,
+          email: data.email,
+          club: data.club
+        });
+        console.log('Face check response:', data);
+      } else {
+        setSubmitStatus('error');
+        setMatchData(null);
+      }
+      
+      // Reset success status after 5 seconds
+      setTimeout(() => {
+        setSubmitStatus('idle');
+      }, 5000);
+    } catch (error) {
+      console.error('Error sending image to API:', error);
+      setSubmitStatus('error');
+      
+      // Reset error status after 5 seconds
+      setTimeout(() => {
+        setSubmitStatus('idle');
+        setMatchData(null);
+      }, 5000);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const setupFaceMesh = () => {
     if (!videoRef.current || isSetupRef.current) return;
@@ -191,8 +279,20 @@ const FaceChecking = ({ onBack }: FaceCheckingProps) => {
                                     (rapidDrop && avgEAR > state.baselineEAR * 0.65);
               
               if (canDetectBlink) {
+                const now = Date.now();
+                const timeSinceLastCapture = now - lastBlinkCaptureRef.current;
+                
                 setBlinkCount(prev => prev + 1);
                 setIsBlinking(true);
+                
+                // Capture and send image if cooldown has passed
+                if (timeSinceLastCapture >= BLINK_CAPTURE_COOLDOWN && !isSubmitting) {
+                  lastBlinkCaptureRef.current = now;
+                  const imageBase64 = captureFrameToBase64();
+                  if (imageBase64) {
+                    sendImageToAPI(imageBase64);
+                  }
+                }
                 
                 state.state = 'OPEN';
                 state.closedFrames = 0;
@@ -320,6 +420,9 @@ const FaceChecking = ({ onBack }: FaceCheckingProps) => {
     setFaceDetected(false);
     setBlinkCount(0);
     setIsBlinking(false);
+    setMatchData(null);
+    setSubmitStatus('idle');
+    setIsSubmitting(false);
     blinkStateRef.current = { 
       state: 'OPEN', 
       closedFrames: 0, 
@@ -363,6 +466,9 @@ const FaceChecking = ({ onBack }: FaceCheckingProps) => {
       setFaceDetected(false);
       setBlinkCount(0);
       setIsBlinking(false);
+      setMatchData(null);
+      setSubmitStatus('idle');
+      setIsSubmitting(false);
       blinkStateRef.current = { 
         state: 'OPEN', 
         closedFrames: 0, 
@@ -438,6 +544,46 @@ const FaceChecking = ({ onBack }: FaceCheckingProps) => {
                       BLINK DETECTED!
                     </div>
                   )}
+                  {isSubmitting && (
+                    <div className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-semibold">
+                      Mengirim...
+                    </div>
+                  )}
+                  {submitStatus === 'success' && (
+                    <div className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-semibold">
+                      Berhasil Dikirim
+                    </div>
+                  )}
+                  {submitStatus === 'error' && (
+                    <div className="px-3 py-1 bg-red-100 text-red-700 rounded-full text-xs font-semibold">
+                      Gagal Mengirim
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Match Result Display */}
+        {matchData && submitStatus === 'success' && (
+          <div className="mb-6 sm:mb-8">
+            <div className="bg-green-50 border-2 border-green-200 rounded-lg p-4 sm:p-6">
+              <h3 className="text-lg font-bold text-green-800 mb-4 text-center">
+                Data Terdeteksi
+              </h3>
+              <div className="space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                  <span className="text-sm font-semibold text-gray-700 min-w-[80px]">Nama:</span>
+                  <span className="text-sm text-gray-900 font-medium">{matchData.nama}</span>
+                </div>
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                  <span className="text-sm font-semibold text-gray-700 min-w-[80px]">Email:</span>
+                  <span className="text-sm text-gray-900 font-medium">{matchData.email}</span>
+                </div>
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                  <span className="text-sm font-semibold text-gray-700 min-w-[80px]">Club:</span>
+                  <span className="text-sm text-gray-900 font-medium">{matchData.club}</span>
                 </div>
               </div>
             </div>
