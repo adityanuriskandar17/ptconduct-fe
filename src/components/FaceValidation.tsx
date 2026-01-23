@@ -469,7 +469,6 @@ const FaceValidation = ({ member, onBack }: FaceValidationProps) => {
       <nav className="flex flex-col lg:flex-row justify-between items-start lg:items-center bg-white px-4 sm:px-5 md:px-6 py-3 sm:py-4 rounded-lg shadow-sm mb-4 sm:mb-5 md:mb-6 gap-3 sm:gap-4 lg:gap-0">
         <div className="flex flex-col gap-0.5">
           <h1 className="m-0 text-base sm:text-lg md:text-xl font-semibold text-[#1a1a1a] leading-tight">PT Conduct Dashboard</h1>
-          <p className="m-0 text-xs sm:text-[13px] text-[#666] leading-tight">PT Conduct - A.R. Hakim</p>
         </div>
         <div className="flex items-center gap-2 sm:gap-3 flex-wrap w-full lg:w-auto">
           <div className="bg-[#f8f9fa] border border-[#e0e0e0] px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 rounded-[20px] flex flex-row items-center justify-center gap-1.5 sm:gap-2 md:gap-3 shadow-sm">
