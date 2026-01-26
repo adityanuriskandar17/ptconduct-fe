@@ -410,17 +410,17 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
   return (
     <div className="min-h-screen bg-[#f5f5f5] p-3 sm:p-4 md:p-5 lg:p-6 font-sans overflow-x-hidden">
       {/* Navigation Bar */}
-      <nav className="flex flex-col lg:flex-row justify-between items-start lg:items-center bg-white px-4 sm:px-5 md:px-6 py-3 sm:py-4 rounded-lg shadow-sm mb-4 sm:mb-5 md:mb-6 gap-3 sm:gap-4 lg:gap-0">
+      <nav className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white px-4 sm:px-5 md:px-6 py-3 sm:py-4 rounded-lg shadow-sm mb-4 sm:mb-5 md:mb-6 gap-3 sm:gap-4 md:gap-0">
         <div className="flex flex-col gap-0.5">
           <h1 className="m-0 text-base sm:text-lg md:text-xl font-semibold text-[#1a1a1a] leading-tight">PT Conduct Dashboard</h1>
         </div>
-        <div className="flex items-center gap-2 sm:gap-3 flex-wrap w-full lg:w-auto">
-          <div className="bg-[#f8f9fa] border border-[#e0e0e0] px-3 sm:px-4 md:px-4 py-2 sm:py-2 rounded-[20px] flex flex-row items-center justify-center gap-2 sm:gap-2 md:gap-3 shadow-sm">
+        <div className="flex flex-col md:flex-row items-stretch md:items-center gap-2 sm:gap-3 w-full md:w-auto">
+          <div className="bg-[#f8f9fa] border border-[#e0e0e0] px-3 sm:px-4 md:px-4 py-2 sm:py-2 rounded-[20px] flex flex-row items-center justify-center gap-2 sm:gap-2 md:gap-3 shadow-sm flex-shrink-0">
             <span className="text-xs sm:text-[13px] font-medium text-[#666] whitespace-nowrap">{formatDate(currentDateTime)}</span>
             <span className="text-sm md:text-base text-[#ddd] font-light">|</span>
             <span className="font-semibold text-xs sm:text-sm text-[#3b82f6] tracking-wide whitespace-nowrap">{formatTime(currentDateTime)}</span>
           </div>
-          <div className="flex-1 lg:flex-none min-w-0">
+          <div className="w-full md:w-auto md:min-w-[180px]">
             <select 
               value={selectedClub}
               onChange={(e) => {
@@ -437,7 +437,7 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
                 }
               }}
               disabled={isLoadingClubs || clubs.length === 0}
-              className="w-full lg:w-auto px-3 sm:px-3 md:px-3.5 py-2 sm:py-2 border border-[#ddd] rounded-md text-xs sm:text-[13px] bg-white cursor-pointer text-[#333] disabled:bg-gray-100 disabled:cursor-not-allowed"
+              className="w-full md:w-auto md:min-w-[180px] px-3 sm:px-3 md:px-3.5 py-2 sm:py-2 border border-[#ddd] rounded-md text-xs sm:text-[13px] bg-white cursor-pointer text-[#333] disabled:bg-gray-100 disabled:cursor-not-allowed"
             >
               {isLoadingClubs ? (
                 <option>Memuat club...</option>
@@ -455,30 +455,32 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
               )}
             </select>
           </div>
-          <div className="flex-1 lg:flex-none min-w-0">
+          <div className="w-full md:w-auto md:min-w-[200px]">
             <input 
               type="email" 
               value={userEmail} 
               readOnly 
-              className="w-full lg:w-auto px-3 sm:px-3 md:px-3.5 py-2 sm:py-2 border border-[#ddd] rounded-md text-xs sm:text-[13px] bg-white text-[#333] truncate"
+              className="w-full md:w-auto md:min-w-[200px] px-3 sm:px-3 md:px-3.5 py-2 sm:py-2 border border-[#ddd] rounded-md text-xs sm:text-[13px] bg-white text-[#333] truncate"
             />
           </div>
-          <button 
-            onClick={() => setShowFaceChecking(true)}
-            className="px-3 sm:px-4 py-1.5 sm:py-2 bg-[#3b82f6] hover:bg-[#2563eb] text-white rounded-md text-xs sm:text-[13px] font-medium transition-colors flex-shrink-0"
-            title="Face Checking"
-          >
-            Face Checking
-          </button>
-          {onLogout && (
+          <div className="flex flex-row gap-2 md:gap-3">
             <button 
-              onClick={onLogout}
-              className="px-3 sm:px-4 py-1.5 sm:py-2 bg-red-500 hover:bg-red-600 text-white rounded-md text-xs sm:text-[13px] font-medium transition-colors flex-shrink-0"
-              title="Logout"
+              onClick={() => setShowFaceChecking(true)}
+              className="px-3 sm:px-4 py-1.5 sm:py-2 bg-[#3b82f6] hover:bg-[#2563eb] text-white rounded-md text-xs sm:text-[13px] font-medium transition-colors flex-shrink-0 whitespace-nowrap"
+              title="Face Checking"
             >
-              Keluar
+              Face Checking
             </button>
-          )}
+            {onLogout && (
+              <button 
+                onClick={onLogout}
+                className="px-3 sm:px-4 py-1.5 sm:py-2 bg-red-500 hover:bg-red-600 text-white rounded-md text-xs sm:text-[13px] font-medium transition-colors flex-shrink-0 whitespace-nowrap"
+                title="Logout"
+              >
+                Keluar
+              </button>
+            )}
+          </div>
         </div>
       </nav>
 
