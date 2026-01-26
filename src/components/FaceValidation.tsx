@@ -12,15 +12,17 @@ interface Member {
   gateStatus: boolean;
   bookingStatus: boolean;
   faceStatus: boolean;
+  faceBookingMember?: number; // face_booking_member value (0 or 1)
 }
 
 interface FaceValidationProps {
   member: Member;
   onBack: () => void;
   authToken?: string;
+  userEmail?: string;
 }
 
-const FaceValidation = ({ member, onBack, authToken }: FaceValidationProps) => {
+const FaceValidation = ({ member, onBack, authToken, userEmail }: FaceValidationProps) => {
   const [currentDateTime, setCurrentDateTime] = useState(new Date());
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [blinkCount, setBlinkCount] = useState(0);
@@ -650,7 +652,7 @@ const FaceValidation = ({ member, onBack, authToken }: FaceValidationProps) => {
           <div className="flex-1 lg:flex-none min-w-0">
             <input 
               type="email" 
-              value="adit_sang_legenda@example.com" 
+              value={userEmail || ''} 
               readOnly 
               className="w-full lg:w-auto px-2 sm:px-3 md:px-3.5 py-1.5 sm:py-2 border border-[#ddd] rounded-md text-xs sm:text-[13px] bg-white text-[#333] truncate"
             />
@@ -695,10 +697,22 @@ const FaceValidation = ({ member, onBack, authToken }: FaceValidationProps) => {
           </div>
 
           {/* Validation Status Badge */}
-          <div className="flex justify-center md:justify-start">
-            <span className="inline-block bg-red-500 text-white px-6 py-2.5 rounded-lg text-sm font-semibold">
-              Belum Validasi
-            </span>
+          <div className="w-full">
+            {member.faceBookingMember === 1 ? (
+              <span className="flex items-center justify-center gap-2 w-full px-6 py-3.5 rounded-lg text-sm font-bold bg-gradient-to-br from-green-600 via-emerald-500 to-green-700 text-white shadow-[0_4px_15px_rgba(34,197,94,0.4),0_2px_5px_rgba(0,0,0,0.2),inset_0_1px_0_rgba(255,255,255,0.2)] border-2 border-green-400/60 transform hover:scale-[1.02] transition-transform">
+                <svg className="w-5 h-5 drop-shadow-md" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Tervalidasi
+              </span>
+            ) : (
+              <span className="flex items-center justify-center gap-2 w-full px-6 py-3.5 rounded-lg text-sm font-bold bg-gradient-to-br from-red-600 via-red-500 to-red-700 text-white shadow-[0_4px_15px_rgba(239,68,68,0.4),0_2px_5px_rgba(0,0,0,0.2),inset_0_1px_0_rgba(255,255,255,0.2)] border-2 border-red-400/60 transform hover:scale-[1.02] transition-transform">
+                <svg className="w-5 h-5 drop-shadow-md" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                Belum Validasi
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -916,22 +930,32 @@ const FaceValidation = ({ member, onBack, authToken }: FaceValidationProps) => {
         <div className="flex flex-col sm:flex-row gap-3">
           <button
             onClick={onBack}
-            className="flex-1 py-2.5 sm:py-3 px-4 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+            className="flex-1 py-3 sm:py-3.5 px-5 border-2 border-slate-300 rounded-lg text-sm font-semibold text-slate-700 bg-white hover:bg-gradient-to-r hover:from-slate-50 hover:to-gray-50 hover:border-slate-400 transition-all duration-300 shadow-sm hover:shadow-md transform hover:-translate-y-0.5 flex items-center justify-center gap-2"
           >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
             Kembali
           </button>
           {!isCameraActive ? (
             <button
               onClick={handleActivateCamera}
-              className="flex-1 py-2.5 sm:py-3 px-4 bg-gradient-to-br from-[#3b82f6] to-[#2563eb] text-white rounded-lg text-sm font-semibold hover:opacity-90 transition-opacity"
+              className="flex-1 py-3 sm:py-3.5 px-5 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-700 hover:via-indigo-700 hover:to-purple-700 text-white rounded-lg text-sm font-semibold transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 flex items-center justify-center gap-2"
             >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
               Aktifkan Kamera
             </button>
           ) : (
             <button
               onClick={handleStopCamera}
-              className="flex-1 py-2.5 sm:py-3 px-4 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-semibold transition-colors"
+              className="flex-1 py-3 sm:py-3.5 px-5 bg-gradient-to-r from-rose-500 via-red-500 to-rose-600 hover:from-rose-600 hover:via-red-600 hover:to-rose-700 text-white rounded-lg text-sm font-semibold transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 flex items-center justify-center gap-2"
             >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
+              </svg>
               Matikan Kamera
             </button>
           )}

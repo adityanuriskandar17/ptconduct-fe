@@ -403,6 +403,7 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
           }
         }}
         authToken={authToken}
+        userEmail={userEmail}
       />
     );
   }
@@ -466,18 +467,25 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
           <div className="flex flex-row gap-2 md:gap-3">
             <button 
               onClick={() => setShowFaceChecking(true)}
-              className="px-3 sm:px-4 py-1.5 sm:py-2 bg-[#3b82f6] hover:bg-[#2563eb] text-white rounded-md text-xs sm:text-[13px] font-medium transition-colors flex-shrink-0 whitespace-nowrap"
+              className="px-4 sm:px-5 py-2 sm:py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs sm:text-[13px] font-semibold transition-all duration-300 flex-shrink-0 whitespace-nowrap shadow-md hover:shadow-lg transform hover:-translate-y-0.5 flex items-center gap-2"
               title="Face Checking"
             >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+              </svg>
               Face Checking
             </button>
             {onLogout && (
               <button 
                 onClick={onLogout}
-                className="px-3 sm:px-4 py-1.5 sm:py-2 bg-red-500 hover:bg-red-600 text-white rounded-md text-xs sm:text-[13px] font-medium transition-colors flex-shrink-0 whitespace-nowrap"
+                className="px-4 sm:px-5 py-2 sm:py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-xs sm:text-[13px] font-semibold transition-all duration-300 flex-shrink-0 whitespace-nowrap shadow-md hover:shadow-lg transform hover:-translate-y-0.5 flex items-center gap-2"
                 title="Logout"
               >
-                Keluar
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+                Logout
               </button>
             )}
           </div>
@@ -607,8 +615,11 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
             </label>
             <button 
               onClick={() => setIsSyncModalOpen(true)}
-              className="bg-[#3b82f6] hover:bg-[#2563eb] text-white border-none py-2 px-4 rounded-lg text-sm font-medium cursor-pointer transition-colors"
+              className="bg-blue-600 hover:bg-blue-700 text-white border-none py-2.5 px-5 rounded-lg text-sm font-semibold cursor-pointer transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 flex items-center gap-2"
             >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
               Sync
             </button>
           </div>
@@ -694,8 +705,11 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
                           setSelectedDetailMember(member);
                           setIsDetailModalOpen(true);
                         }}
-                        className="bg-gray-500 hover:bg-gray-600 text-white border-none py-1 md:py-1.5 lg:py-2 px-2 md:px-3 rounded-md text-[10px] md:text-xs font-medium cursor-pointer transition-colors flex items-center justify-center gap-1 whitespace-nowrap w-full md:w-auto"
+                        className="bg-slate-600 hover:bg-slate-700 text-white border-none py-1.5 md:py-2 lg:py-2.5 px-3 md:px-4 rounded-lg text-[10px] md:text-xs font-semibold cursor-pointer transition-all duration-300 shadow-sm hover:shadow-md transform hover:-translate-y-0.5 flex items-center justify-center gap-1.5 whitespace-nowrap w-full md:w-auto"
                       >
+                        <svg className="w-3.5 h-3.5 md:w-4 md:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
                         Detail
                       </button>
                       <button 
@@ -703,10 +717,12 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
                           setSelectedMember(member);
                           setIsModalOpen(true);
                         }}
-                        className="bg-gradient-to-br from-[#3b82f6] to-[#2563eb] text-white border-none py-1 md:py-1.5 lg:py-2 px-2 md:px-3 lg:px-4 rounded-md text-[10px] md:text-xs lg:text-sm font-medium cursor-pointer transition-opacity hover:opacity-90 flex items-center justify-center gap-1 md:gap-1.5 lg:gap-2 whitespace-nowrap w-full md:w-auto"
+                        className="bg-emerald-500 hover:bg-emerald-600 text-white border-none py-1.5 md:py-2 lg:py-2.5 px-3 md:px-4 lg:px-5 rounded-lg text-[10px] md:text-xs lg:text-sm font-semibold cursor-pointer transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 flex items-center justify-center gap-1.5 md:gap-2 whitespace-nowrap w-full md:w-auto"
                       >
-                        <img src={validasiIcon} alt="Validasi" className="w-3 h-3 md:w-3.5 md:h-3.5 flex-shrink-0" />
-                        <span className="hidden sm:inline">Validasi</span>
+                        <svg className="w-3.5 h-3.5 md:w-4 md:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <span className="hidden sm:inline">Validation</span>
                       </button>
                     </div>
                   </td>
@@ -977,10 +993,12 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
                     setIsDetailModalOpen(false);
                     setIsModalOpen(true);
                   }}
-                  className="w-full bg-gradient-to-br from-[#3b82f6] to-[#2563eb] text-white border-none py-3.5 px-4 rounded-lg text-sm font-semibold cursor-pointer transition-all hover:opacity-90 hover:shadow-lg flex items-center justify-center gap-2"
+                  className="w-full bg-emerald-500 hover:bg-emerald-600 text-white border-none py-3.5 px-4 rounded-lg text-sm font-semibold cursor-pointer transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 flex items-center justify-center gap-2"
                 >
-                  <img src={validasiIcon} alt="Validasi" className="w-4 h-4" />
-                  Validasi Member
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Validation Member
                 </button>
               </div>
             </div>
