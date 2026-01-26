@@ -146,6 +146,15 @@ const FaceValidation = ({ member, onBack, authToken }: FaceValidationProps) => {
     setIsSubmitting(true);
     setSubmitStatus('idle');
 
+    // Format gate_time from current member data
+    const gateTimeFormatted = formatGateTimeForAPI(member.gateTime);
+    console.log('Sending check-booking request:', {
+      memberId: member.id,
+      memberName: member.name,
+      gateTime: member.gateTime,
+      gateTimeFormatted: gateTimeFormatted
+    });
+
     try {
       const apiUrl = import.meta.env.VITE_API_PTCONDUCT || 'http://127.0.0.1:8088';
       const response = await fetch(`${apiUrl}/api/ptconduct/check-booking`, {
@@ -155,7 +164,8 @@ const FaceValidation = ({ member, onBack, authToken }: FaceValidationProps) => {
           'Authorization': `Bearer ${authToken}`
         },
         body: JSON.stringify({
-          image_b64: imageBase64
+          image_b64: imageBase64,
+          gate_time: gateTimeFormatted
         })
       });
 
@@ -202,6 +212,18 @@ const FaceValidation = ({ member, onBack, authToken }: FaceValidationProps) => {
     return () => clearInterval(timer);
   }, []);
 
+  // Reset state when member changes (when user selects different row)
+  useEffect(() => {
+    // Reset API response and submission status when member changes
+    setApiResponse(null);
+    setSubmitStatus('idle');
+    setIsSubmitting(false);
+    setBlinkCount(0);
+    setIsBlinking(false);
+    setFaceDetected(false);
+    // Don't reset camera state - let user control it
+  }, [member.id, member.gateTime]);
+
   const formatDate = (date: Date) => {
     const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
     const day = days[date.getDay()];
@@ -221,6 +243,31 @@ const FaceValidation = ({ member, onBack, authToken }: FaceValidationProps) => {
   const formatDateTime = (dateStr: string) => {
     const date = new Date(dateStr);
     return formatDate(date) + ' ' + formatTime(date);
+  };
+
+  // Function to format gate_time to "YYYY-MM-DD HH:mm:ss" format for API
+  const formatGateTimeForAPI = (dateStr: string): string => {
+    try {
+      const date = new Date(dateStr);
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const hours = String(date.getHours()).padStart(2, '0');
+      const minutes = String(date.getMinutes()).padStart(2, '0');
+      const seconds = String(date.getSeconds()).padStart(2, '0');
+      return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+    } catch (error) {
+      console.error('Error formatting gate_time:', error);
+      // Return current time as fallback
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      const hours = String(now.getHours()).padStart(2, '0');
+      const minutes = String(now.getMinutes()).padStart(2, '0');
+      const seconds = String(now.getSeconds()).padStart(2, '0');
+      return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+    }
   };
 
   const setupFaceMesh = () => {

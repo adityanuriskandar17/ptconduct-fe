@@ -21,6 +21,7 @@ interface Member {
   gateStatus: boolean;
   bookingStatus: boolean;
   faceStatus: boolean;
+  faceBookingMember?: number; // face_booking_member value (0 or 1)
   club?: string; // Optional club field for client-side filtering
 }
 
@@ -262,6 +263,8 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
           bookingStatus: item.booking === 1,
           // faceStatus: true if both face_booking_member === 1 AND face_booking_pt === 1
           faceStatus: item.face_booking_member === 1 && item.face_booking_pt === 1,
+          // Store face_booking_member value
+          faceBookingMember: item.face_booking_member || 0,
           // Store club info
           club: item.club || data.club || '',
         }));
@@ -394,6 +397,10 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
         onBack={() => {
           setShowFaceValidation(false);
           setValidationMember(null);
+          // Refresh dashboard data when going back
+          if (authToken) {
+            fetchDashboardData();
+          }
         }}
         authToken={authToken}
       />
@@ -636,7 +643,16 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
                   currentMembers.map((member, index) => (
                     <tr key={member.id} className="hover:bg-[#f9fafb]">
                       <td className="p-2 md:p-2.5 lg:p-3 border-b border-[#e5e7eb] text-[#333] text-center text-xs md:text-sm">{startIndex + index + 1}</td>
-                  <td className="p-2 md:p-2.5 lg:p-3 border-b border-[#e5e7eb] text-[#333] text-left text-xs md:text-sm" style={{ width: '150px', maxWidth: '150px', wordWrap: 'break-word', overflowWrap: 'break-word', whiteSpace: 'normal' }}>{member.name}</td>
+                  <td className="p-2 md:p-2.5 lg:p-3 border-b border-[#e5e7eb] text-[#333] text-left text-xs md:text-sm" style={{ width: '150px', maxWidth: '150px', wordWrap: 'break-word', overflowWrap: 'break-word', whiteSpace: 'normal' }}>
+                    <div className="flex items-center gap-2">
+                      <span>{member.name}</span>
+                      {member.faceBookingMember === 1 && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-green-100 text-green-800 border border-green-300">
+                          ✓ Validated
+                        </span>
+                      )}
+                    </div>
+                  </td>
                   <td className="p-2 md:p-2.5 lg:p-3 border-b border-[#e5e7eb] text-[#333] text-left text-xs md:text-sm" style={{ width: '120px', maxWidth: '120px', wordWrap: 'break-word', overflowWrap: 'break-word', whiteSpace: 'normal' }}>{member.pt}</td>
                   <td className="p-2 md:p-2.5 lg:p-3 border-b border-[#e5e7eb] text-[#333] text-left text-xs" style={{ width: '160px', maxWidth: '160px', wordWrap: 'break-word', overflowWrap: 'break-word', whiteSpace: 'normal' }}>{formatDateTime(member.start)}</td>
                   <td className="hidden xl:table-cell p-2 md:p-2.5 lg:p-3 border-b border-[#e5e7eb] text-[#333] text-left text-xs md:text-sm">{member.end}</td>
