@@ -122,6 +122,11 @@ const FaceValidation = ({ member, onBack }: FaceValidationProps) => {
     return `${hours}:${minutes}:${seconds}`;
   };
 
+  const formatDateTime = (dateStr: string) => {
+    const date = new Date(dateStr);
+    return formatDate(date) + ' ' + formatTime(date);
+  };
+
   const setupFaceMesh = () => {
     if (!videoRef.current || isSetupRef.current) return;
     isSetupRef.current = true;
@@ -494,25 +499,45 @@ const FaceValidation = ({ member, onBack }: FaceValidationProps) => {
 
       {/* Member Information Card */}
       <div className="bg-white rounded-xl shadow-md mb-4 sm:mb-5 md:mb-6 p-4 sm:p-5 md:p-6">
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 md:gap-6">
-          {/* Member Info */}
-          <div className="flex-1 w-full md:w-auto">
-            <div className="space-y-3 sm:space-y-4">
-              <div>
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-1.5">Member</label>
-                <p className="text-base sm:text-lg md:text-xl font-semibold text-gray-900 break-words">{member.name}</p>
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-1.5">Personal Trainer</label>
-                <p className="text-base sm:text-lg md:text-xl font-semibold text-gray-900 break-words">{member.pt}</p>
-              </div>
-              {/* Validation Status Badge */}
-              <div>
-                <span className="inline-block bg-red-500 text-white px-4 py-2 rounded-lg text-sm font-semibold">
-                  Belum Validasi
-                </span>
-              </div>
+        <div className="space-y-6">
+          {/* Member and PT Info */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-2">Member</label>
+              <p className="text-base sm:text-lg md:text-xl font-semibold text-gray-900 break-words">{member.name}</p>
             </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-2">Personal Trainer</label>
+              <p className="text-base sm:text-lg md:text-xl font-semibold text-gray-900 break-words">{member.pt}</p>
+            </div>
+          </div>
+
+          {/* Divider */}
+          <div className="border-t border-gray-200"></div>
+
+          {/* Time Information Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-2">Start</label>
+              <p className="text-sm sm:text-base font-semibold text-gray-900 break-words">{formatDateTime(member.start)}</p>
+            </div>
+            <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-2">End</label>
+              <p className="text-sm sm:text-base font-semibold text-gray-900 break-words">
+                {member.end.includes('T') || member.end.includes(' ') ? formatDateTime(member.end) : member.end}
+              </p>
+            </div>
+            <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-2">Gate Time</label>
+              <p className="text-sm sm:text-base font-semibold text-gray-900 break-words">{formatDateTime(member.gateTime)}</p>
+            </div>
+          </div>
+
+          {/* Validation Status Badge */}
+          <div className="flex justify-center md:justify-start">
+            <span className="inline-block bg-red-500 text-white px-6 py-2.5 rounded-lg text-sm font-semibold">
+              Belum Validasi
+            </span>
           </div>
         </div>
       </div>
