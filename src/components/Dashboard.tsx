@@ -394,7 +394,8 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
         onBack={() => {
           setShowFaceValidation(false);
           setValidationMember(null);
-        }} 
+        }}
+        authToken={authToken}
       />
     );
   }

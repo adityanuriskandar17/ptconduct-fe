@@ -17,20 +17,36 @@ interface Member {
 interface FaceValidationProps {
   member: Member;
   onBack: () => void;
+  authToken?: string;
 }
 
-const FaceValidation = ({ member, onBack }: FaceValidationProps) => {
+const FaceValidation = ({ member, onBack, authToken }: FaceValidationProps) => {
   const [currentDateTime, setCurrentDateTime] = useState(new Date());
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [blinkCount, setBlinkCount] = useState(0);
   const [isBlinking, setIsBlinking] = useState(false);
   const [faceDetected, setFaceDetected] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitStatus, setSubmitStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [apiResponse, setApiResponse] = useState<{
+    ok?: boolean;
+    matched?: boolean;
+    has_booking?: boolean;
+    best_score?: number;
+    club?: string;
+    email?: string;
+    margin?: number;
+    message?: string;
+    nama?: string;
+    second_best?: number;
+  } | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const faceMeshRef = useRef<FaceMesh | null>(null);
   const cameraRef = useRef<Camera | null>(null);
   const isSetupRef = useRef(false);
+  const lastBlinkCaptureRef = useRef<number>(0);
   
   // Eye landmarks indices (MediaPipe Face Mesh) - using key points for EAR calculation
   // Left eye: [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246]
@@ -96,8 +112,88 @@ const FaceValidation = ({ member, onBack }: FaceValidationProps) => {
   const BASELINE_FRAMES = 20; // Frames untuk calculate baseline (reduced for faster initialization)
   const FAST_BLINK_DROP_THRESHOLD = 0.35; // Threshold untuk deteksi blink sangat cepat (35% drop)
   const FAST_BLINK_RECOVERY_THRESHOLD = 0.75; // Threshold untuk recovery blink cepat (75% dari baseline)
+  const BLINK_CAPTURE_COOLDOWN = 2000; // Minimum 2 seconds between captures
   const [currentEAR, setCurrentEAR] = useState<number | null>(null);
   const [baselineEAR, setBaselineEAR] = useState<number | null>(null);
+
+  // Function to capture video frame and convert to base64
+  const captureFrameToBase64 = (): string | null => {
+    if (!videoRef.current) return null;
+    
+    const video = videoRef.current;
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    
+    // Draw video frame to canvas (capture original orientation, not mirrored)
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    
+    // Convert to base64 JPEG
+    return canvas.toDataURL('image/jpeg', 0.8);
+  };
+
+  // Function to send image to API
+  const sendImageToAPI = async (imageBase64: string) => {
+    if (!authToken) {
+      console.error('No auth token available');
+      setSubmitStatus('error');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setSubmitStatus('idle');
+
+    try {
+      const apiUrl = import.meta.env.VITE_API_PTCONDUCT || 'http://127.0.0.1:8088';
+      const response = await fetch(`${apiUrl}/api/ptconduct/check-booking`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({
+          image_b64: imageBase64
+        })
+      });
+
+      const data = await response.json();
+      
+      // Save API response data (even if not ok)
+      setApiResponse(data);
+      
+      if (!response.ok) {
+        setSubmitStatus('error');
+        console.error('API error response:', data);
+        
+        // Reset error status after 3 seconds (but keep the data)
+        setTimeout(() => {
+          setSubmitStatus('idle');
+        }, 3000);
+        return;
+      }
+      
+      setSubmitStatus('success');
+      console.log('Check booking response:', data);
+      
+      // Reset success status indicator after 3 seconds (but keep the data)
+      setTimeout(() => {
+        setSubmitStatus('idle');
+      }, 3000);
+    } catch (error) {
+      console.error('Error sending image to API:', error);
+      setSubmitStatus('error');
+      
+      // Reset error status after 3 seconds
+      setTimeout(() => {
+        setSubmitStatus('idle');
+      }, 3000);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -274,6 +370,9 @@ const FaceValidation = ({ member, onBack }: FaceValidationProps) => {
               if (canDetectBlink) {
                 // Complete blink detected!
                 const newCount = blinkCount + 1;
+                const now = Date.now();
+                const timeSinceLastCapture = now - lastBlinkCaptureRef.current;
+                
                 console.log('✅✅✅ BLINK DETECTED! Count:', newCount, 
                   'EAR:', avgEAR.toFixed(3),
                   'Baseline:', state.baselineEAR.toFixed(3),
@@ -281,6 +380,15 @@ const FaceValidation = ({ member, onBack }: FaceValidationProps) => {
                   'Recovery:', (earDropRatio * 100).toFixed(1) + '%');
                 setBlinkCount(prev => prev + 1);
                 setIsBlinking(true);
+                
+                // Capture and send image if cooldown has passed
+                if (timeSinceLastCapture >= BLINK_CAPTURE_COOLDOWN && !isSubmitting) {
+                  lastBlinkCaptureRef.current = now;
+                  const imageBase64 = captureFrameToBase64();
+                  if (imageBase64) {
+                    sendImageToAPI(imageBase64);
+                  }
+                }
                 
                 // Reset to OPEN state
                 state.state = 'OPEN';
@@ -412,6 +520,9 @@ const FaceValidation = ({ member, onBack }: FaceValidationProps) => {
     setBlinkCount(0);
     setIsBlinking(false);
     setFaceDetected(false);
+    setSubmitStatus('idle');
+    setIsSubmitting(false);
+    // Don't clear apiResponse, keep the last result visible
     blinkStateRef.current = { 
       state: 'OPEN', 
       closedFrames: 0, 
@@ -455,6 +566,9 @@ const FaceValidation = ({ member, onBack }: FaceValidationProps) => {
       setBlinkCount(0);
       setIsBlinking(false);
       setFaceDetected(false);
+      setSubmitStatus('idle');
+      setIsSubmitting(false);
+      // Don't clear apiResponse, keep the last result visible
       blinkStateRef.current = { 
         state: 'OPEN', 
         closedFrames: 0, 
@@ -613,8 +727,140 @@ const FaceValidation = ({ member, onBack }: FaceValidationProps) => {
                       BLINK DETECTED!
                     </div>
                   )}
+                  {isSubmitting && (
+                    <div className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-semibold">
+                      Mengirim...
+                    </div>
+                  )}
+                  {submitStatus === 'success' && (
+                    <div className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-semibold">
+                      Berhasil Dikirim
+                    </div>
+                  )}
+                  {submitStatus === 'error' && (
+                    <div className="px-3 py-1 bg-red-100 text-red-700 rounded-full text-xs font-semibold">
+                      Gagal Mengirim
+                    </div>
+                  )}
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* API Response Display */}
+        {apiResponse && (
+          <div className="mb-4 sm:mb-5 md:mb-6">
+            <div className={`rounded-lg p-4 sm:p-6 border-2 ${
+              apiResponse.ok && apiResponse.matched 
+                ? 'bg-green-50 border-green-200' 
+                : apiResponse.ok && !apiResponse.matched
+                ? 'bg-yellow-50 border-yellow-200'
+                : 'bg-red-50 border-red-200'
+            }`}>
+              <h3 className={`text-lg font-bold mb-4 text-center ${
+                apiResponse.ok && apiResponse.matched 
+                  ? 'text-green-800' 
+                  : apiResponse.ok && !apiResponse.matched
+                  ? 'text-yellow-800'
+                  : 'text-red-800'
+              }`}>
+                {apiResponse.ok && apiResponse.matched 
+                  ? '✓ Data Terdeteksi' 
+                  : apiResponse.ok && !apiResponse.matched
+                  ? '⚠ Wajah Tidak Cocok'
+                  : '✗ Error'}
+              </h3>
+              
+              {apiResponse.message && (
+                <div className={`mb-4 p-3 rounded-lg ${
+                  apiResponse.has_booking 
+                    ? 'bg-green-100 text-green-800' 
+                    : 'bg-yellow-100 text-yellow-800'
+                }`}>
+                  <p className="text-sm font-medium text-center">{apiResponse.message}</p>
+                </div>
+              )}
+
+              {apiResponse.matched && (
+                <div className="space-y-3">
+                  {apiResponse.nama && (
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                      <span className="text-sm font-semibold text-gray-700 min-w-[80px]">Nama:</span>
+                      <span className="text-sm text-gray-900 font-medium">{apiResponse.nama}</span>
+                    </div>
+                  )}
+                  {apiResponse.email && (
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                      <span className="text-sm font-semibold text-gray-700 min-w-[80px]">Email:</span>
+                      <span className="text-sm text-gray-900 font-medium break-all">{apiResponse.email}</span>
+                    </div>
+                  )}
+                  {apiResponse.club && (
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                      <span className="text-sm font-semibold text-gray-700 min-w-[80px]">Club:</span>
+                      <span className="text-sm text-gray-900 font-medium">{apiResponse.club}</span>
+                    </div>
+                  )}
+                  
+                  {/* Score Information */}
+                  {(apiResponse.best_score !== undefined || apiResponse.second_best !== undefined || apiResponse.margin !== undefined) && (
+                    <div className="mt-4 pt-4 border-t border-gray-300">
+                      <h4 className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Informasi Skor</h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        {apiResponse.best_score !== undefined && (
+                          <div className="bg-white rounded-lg p-3 border border-gray-200">
+                            <span className="text-xs text-gray-500 block mb-1">Best Score</span>
+                            <span className="text-sm font-semibold text-gray-900">{(apiResponse.best_score * 100).toFixed(2)}%</span>
+                          </div>
+                        )}
+                        {apiResponse.second_best !== undefined && (
+                          <div className="bg-white rounded-lg p-3 border border-gray-200">
+                            <span className="text-xs text-gray-500 block mb-1">Second Best</span>
+                            <span className="text-sm font-semibold text-gray-900">{(apiResponse.second_best * 100).toFixed(2)}%</span>
+                          </div>
+                        )}
+                        {apiResponse.margin !== undefined && (
+                          <div className="bg-white rounded-lg p-3 border border-gray-200">
+                            <span className="text-xs text-gray-500 block mb-1">Margin</span>
+                            <span className="text-sm font-semibold text-gray-900">{(apiResponse.margin * 100).toFixed(2)}%</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Booking Status */}
+                  {apiResponse.has_booking !== undefined && (
+                    <div className="mt-4 pt-4 border-t border-gray-300">
+                      <div className={`flex items-center gap-3 p-3 rounded-lg ${
+                        apiResponse.has_booking 
+                          ? 'bg-green-100 border-2 border-green-300' 
+                          : 'bg-red-100 border-2 border-red-300'
+                      }`}>
+                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                          apiResponse.has_booking ? 'bg-green-200' : 'bg-red-200'
+                        }`}>
+                          {apiResponse.has_booking ? (
+                            <svg className="w-6 h-6 text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                          ) : (
+                            <svg className="w-6 h-6 text-red-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          )}
+                        </div>
+                        <span className={`text-sm font-semibold ${
+                          apiResponse.has_booking ? 'text-green-800' : 'text-red-800'
+                        }`}>
+                          {apiResponse.has_booking ? 'Memiliki Booking' : 'Tidak Memiliki Booking'}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         )}
