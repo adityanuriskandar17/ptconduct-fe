@@ -11,21 +11,53 @@ function App() {
 
   // Check if user is already logged in (from localStorage)
   useEffect(() => {
-    const savedEmail = localStorage.getItem('ptconduct_user_email')
-    const savedToken = localStorage.getItem('ptconduct_auth_token')
-    const savedAuth = localStorage.getItem('ptconduct_authenticated')
-    
-    if (savedEmail && savedToken && savedAuth === 'true') {
+    const checkAuthentication = async () => {
+      const savedEmail = localStorage.getItem('ptconduct_user_email')
+      const savedToken = localStorage.getItem('ptconduct_auth_token')
+      const savedAuth = localStorage.getItem('ptconduct_authenticated')
+      
+      // If no saved data, user must login
+      if (!savedEmail || !savedToken || savedAuth !== 'true') {
+        // Clear any invalid data
+        localStorage.removeItem('ptconduct_user_email')
+        localStorage.removeItem('ptconduct_auth_token')
+        localStorage.removeItem('ptconduct_authenticated')
+        setIsAuthenticated(false)
+        setIsLoading(false)
+        return
+      }
+
+      // Optional: Validate token with API (uncomment if you want to verify token is still valid)
+      // try {
+      //   const apiUrl = import.meta.env.VITE_API_PTCONDUCT || 'http://127.0.0.1:8088';
+      //   const response = await fetch(`${apiUrl}/api/ptconduct/validate-token`, {
+      //     method: 'GET',
+      //     headers: {
+      //       'Authorization': `Bearer ${savedToken}`,
+      //     },
+      //   });
+      //   
+      //   if (!response.ok) {
+      //     throw new Error('Token invalid');
+      //   }
+      // } catch (error) {
+      //   // Token invalid, clear and require login
+      //   localStorage.removeItem('ptconduct_user_email')
+      //   localStorage.removeItem('ptconduct_auth_token')
+      //   localStorage.removeItem('ptconduct_authenticated')
+      //   setIsAuthenticated(false)
+      //   setIsLoading(false)
+      //   return
+      // }
+
+      // Token exists and is valid (or validation skipped), restore session
       setUserEmail(savedEmail)
       setAuthToken(savedToken)
       setIsAuthenticated(true)
-    } else {
-      // Clear invalid data
-      localStorage.removeItem('ptconduct_user_email')
-      localStorage.removeItem('ptconduct_auth_token')
-      localStorage.removeItem('ptconduct_authenticated')
+      setIsLoading(false)
     }
-    setIsLoading(false)
+
+    checkAuthentication()
   }, [])
 
   const handleLogin = (email: string, token: string) => {

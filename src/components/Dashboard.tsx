@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import Swal from 'sweetalert2';
 import notValidationIcon from '../assets/not_validation.svg';
 import validationIcon from '../assets/validation.svg';
 import totalBookingIcon from '../assets/total_booking.svg';
@@ -49,6 +50,14 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
   const [selectedDetailMember, setSelectedDetailMember] = useState<Member | null>(null);
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
   const [memberId, setMemberId] = useState('');
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isFetchingBookings, setIsFetchingBookings] = useState(false);
+  const [bookingData, setBookingData] = useState<any>(null);
+  const [showBookingModal, setShowBookingModal] = useState(false);
+  const [currentMemberId, setCurrentMemberId] = useState<string>('');
+  const [isSyncingToAPI, setIsSyncingToAPI] = useState(false);
+  const [memberProfile, setMemberProfile] = useState<any>(null);
+  const [showMemberProfile, setShowMemberProfile] = useState(false);
   const [showFaceValidation, setShowFaceValidation] = useState(false);
   const [validationMember, setValidationMember] = useState<Member | null>(null);
   const [showFaceChecking, setShowFaceChecking] = useState(false);
@@ -377,6 +386,449 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
     setCurrentPage(1);
   }, [searchDebounce, searchPtDebounce, selectedDate, gateChecked, bookingChecked, selectedClub]);
 
+  // Function to handle sync with member ID (button biru)
+  const handleSyncWithMemberId = async () => {
+    if (!memberId.trim()) {
+      Swal.fire({
+        icon: 'warning',
+        title: 'Warning',
+        text: 'Please enter Member ID',
+        confirmButtonColor: '#3b82f6',
+      });
+      return;
+    }
+
+    setIsFetchingBookings(true);
+    try {
+      // Step 1: Login to get token
+      const loginResponse = await fetch('https://services.ftlhorizon.com/api/gymmaster/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          member_id: memberId.trim()
+        })
+      });
+
+      if (!loginResponse.ok) {
+        const errorData = await loginResponse.json().catch(() => ({ message: 'Login failed' }));
+        throw new Error(errorData.message || `Login failed! status: ${loginResponse.status}`);
+      }
+
+      const loginData = await loginResponse.json();
+      console.log('Login response:', loginData);
+      
+      // Try different possible token field names and structures
+      let token = null;
+      
+      // Check various possible structures
+      if (typeof loginData === 'string') {
+        // If response is directly a token string
+        token = loginData;
+      } else if (loginData.data?.token) {
+        // Most likely: token is inside data object
+        token = loginData.data.token;
+      } else if (loginData.data && typeof loginData.data === 'string') {
+        // If data itself is the token
+        token = loginData.data;
+      } else if (loginData.token) {
+        token = loginData.token;
+      } else if (loginData.access_token) {
+        token = loginData.access_token;
+      } else if (loginData.accessToken) {
+        token = loginData.accessToken;
+      } else if (loginData.result?.token) {
+        token = loginData.result.token;
+      } else if (loginData.response?.token) {
+        token = loginData.response.token;
+      } else if (loginData.data && typeof loginData.data === 'object') {
+        // If data is an object, try to find token inside it
+        const dataObj = loginData.data;
+        token = dataObj.token || dataObj.access_token || dataObj.accessToken || 
+                dataObj.session_token || dataObj.sessionToken || dataObj.auth_token || dataObj.authToken;
+      }
+      
+      if (!token) {
+        console.error('Login response structure:', loginData);
+        Swal.fire({
+          icon: 'error',
+          title: 'Token Not Found',
+          html: `
+            <p>Token tidak ditemukan dalam response login.</p>
+            <p style="margin-top: 0.5rem; font-size: 0.875rem; color: #6b7280;">Status: ${loginData.status ? 'Success' : 'Failed'}</p>
+            <p style="font-size: 0.875rem; color: #6b7280;">Message: ${loginData.message || 'N/A'}</p>
+            <details style="margin-top: 1rem; text-align: left;">
+              <summary style="cursor: pointer; font-weight: bold; color: #3b82f6;">Lihat Response Lengkap</summary>
+              <pre style="background: #f3f4f6; padding: 1rem; border-radius: 0.5rem; overflow-x: auto; margin-top: 0.5rem; font-size: 0.75rem; max-height: 300px; overflow-y: auto;">${JSON.stringify(loginData, null, 2)}</pre>
+            </details>
+          `,
+          confirmButtonColor: '#ef4444',
+          width: '600px',
+        });
+        return;
+      }
+      
+      console.log('Token extracted:', token.substring(0, 50) + '...');
+
+      // Step 2: Fetch past bookings using token
+      const bookingsResponse = await fetch(`https://services.ftlhorizon.com/api/gymmaster/booking/pastbookings?token=${token}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+
+      if (!bookingsResponse.ok) {
+        const errorData = await bookingsResponse.json().catch(() => ({ message: 'Failed to fetch bookings' }));
+        throw new Error(errorData.message || `Failed to fetch bookings! status: ${bookingsResponse.status}`);
+      }
+
+      const bookingsData = await bookingsResponse.json();
+      
+      // Step 3: Fetch member profile using token
+      const profileResponse = await fetch(`https://services.ftlhorizon.com/api/gymmaster/member/profile?token=${token}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+
+      let profileData = null;
+      if (profileResponse.ok) {
+        profileData = await profileResponse.json();
+        console.log('Member profile response:', profileData);
+      } else {
+        console.warn('Failed to fetch member profile:', profileResponse.status);
+      }
+      
+      // Store booking data and member profile, then show modal
+      setBookingData(bookingsData);
+      setMemberProfile(profileData);
+      setCurrentMemberId(memberId.trim());
+      setIsSyncModalOpen(false);
+      setShowBookingModal(true);
+      setMemberId('');
+      
+    } catch (error) {
+      console.error('Error syncing with member ID:', error);
+      const errorMsg = error instanceof Error ? error.message : 'Terjadi kesalahan saat sync';
+      Swal.fire({
+        icon: 'error',
+        title: 'Sync Gagal',
+        text: errorMsg,
+        confirmButtonColor: '#ef4444',
+      });
+    } finally {
+      setIsFetchingBookings(false);
+    }
+  };
+
+  // Function to sync booking data to ptconduct API
+  const handleSyncToAPI = async () => {
+    if (!authToken) {
+      Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: 'No auth token available',
+        confirmButtonColor: '#ef4444',
+      });
+      return;
+    }
+
+    if (!bookingData) {
+      Swal.fire({
+        icon: 'warning',
+        title: 'Warning',
+        text: 'No booking data to sync',
+        confirmButtonColor: '#3b82f6',
+      });
+      return;
+    }
+
+    setIsSyncingToAPI(true);
+    try {
+      // Get member name from profile (FULLNAME is the correct field for nama_member)
+      // Check various possible structures for full_name
+      let memberName = 'N/A';
+      if (memberProfile) {
+        // Try different possible paths for full_name
+        memberName = memberProfile?.data?.FULLNAME || 
+                    memberProfile?.data?.full_name || 
+                    memberProfile?.data?.fullname ||
+                    memberProfile?.FULLNAME ||
+                    memberProfile?.full_name ||
+                    memberProfile?.fullname ||
+                    memberProfile?.data?.name || 
+                    memberProfile?.name || 
+                    'N/A';
+      }
+      
+      const memberEmail = memberProfile?.data?.email || memberProfile?.email || '';
+      
+      console.log('=== MEMBER PROFILE DEBUG ===');
+      console.log('Full memberProfile object:', memberProfile);
+      console.log('memberProfile.data:', memberProfile?.data);
+      console.log('memberProfile.data.FULLNAME:', memberProfile?.data?.FULLNAME);
+      console.log('memberProfile.data.full_name:', memberProfile?.data?.full_name);
+      console.log('Extracted memberName:', memberName);
+      
+      // Extract bookings array from bookingData
+      let bookingsArray = null;
+      if (Array.isArray(bookingData)) {
+        bookingsArray = bookingData;
+      } else if (bookingData?.result && Array.isArray(bookingData.result)) {
+        bookingsArray = bookingData.result;
+      } else if (bookingData?.data && Array.isArray(bookingData.data)) {
+        bookingsArray = bookingData.data;
+      } else if (bookingData?.bookings && Array.isArray(bookingData.bookings)) {
+        bookingsArray = bookingData.bookings;
+      }
+
+      // Validate memberName before mapping
+      if (!memberName || memberName === 'N/A') {
+        Swal.fire({
+          icon: 'error',
+          title: 'Member Name Not Found',
+          html: `
+            <p>Nama member tidak ditemukan dari profile.</p>
+            <p style="margin-top: 0.5rem; font-size: 0.875rem;">Member Profile:</p>
+            <pre style="background: #f3f4f6; padding: 1rem; border-radius: 0.5rem; overflow-x: auto; margin-top: 0.5rem; font-size: 0.75rem; max-height: 200px; overflow-y: auto;">${JSON.stringify(memberProfile, null, 2)}</pre>
+          `,
+          confirmButtonColor: '#ef4444',
+          width: '600px',
+        });
+        setIsSyncingToAPI(false);
+        return;
+      }
+
+      // Map bookings to include correct nama_member and keep name field (for nama_pt)
+      // IMPORTANT: 
+      // - Field "name" in booking data is the PT/trainer name (keep it for backend)
+      // - Field "nama_member" must be added from member profile (FULLNAME)
+      // - Backend will use "name" for nama_pt and "nama_member" for nama_member
+      const mappedBookings = (bookingsArray || []).map((booking: any) => {
+        // Field "name" in booking data is the PT/trainer name - keep it as is
+        const ptName = booking.name || booking.location || booking.trainer_name || booking.trainer || booking.trainerName || 'N/A';
+        
+        console.log(`=== BOOKING ${booking.id} MAPPING ===`);
+        console.log('Original booking.name (PT name):', booking.name);
+        console.log('Member name (from profile FULLNAME):', memberName);
+        console.log('Will add nama_member:', memberName);
+        console.log('Will keep name (for nama_pt):', booking.name);
+        
+        // Create new booking object with nama_member added
+        // Keep all original fields including "name" (which is PT name)
+        // Add nama_member from profile
+        const mappedBooking = {
+          ...booking,
+          // CRITICAL: nama_member from profile (FULLNAME) - this is the MEMBER's full name
+          // Backend will use this field for nama_member column in database
+          nama_member: memberName, // From member profile FULLNAME
+          // Field "name" is kept as is - backend will use this for nama_pt column
+        };
+        
+        // Validate that nama_member is not null/empty and different from name (PT name)
+        if (!mappedBooking.nama_member || mappedBooking.nama_member === 'N/A') {
+          console.error(`❌ ERROR: Booking ${booking.id} has invalid nama_member!`);
+          console.error('  nama_member:', mappedBooking.nama_member);
+          console.error('  memberName from profile:', memberName);
+        }
+        
+        if (mappedBooking.nama_member === mappedBooking.name) {
+          console.error(`❌ ERROR: Booking ${booking.id} has sama nama_member dan name (PT name)!`);
+          console.error('  nama_member:', mappedBooking.nama_member);
+          console.error('  name (PT):', mappedBooking.name);
+          console.error('  memberName from profile:', memberName);
+        } else {
+          console.log(`✅ Booking ${booking.id} mapping correct:`);
+          console.log(`   nama_member: "${mappedBooking.nama_member}" (from profile)`);
+          console.log(`   name (PT): "${mappedBooking.name}" (from booking data)`);
+        }
+        
+        return mappedBooking;
+      });
+
+      // Verify all bookings have nama_member before sending
+      const invalidBookings = mappedBookings.filter((b: any) => !b.nama_member || b.nama_member === 'N/A');
+      if (invalidBookings.length > 0) {
+        console.error('❌ Some bookings have invalid nama_member:', invalidBookings);
+        Swal.fire({
+          icon: 'error',
+          title: 'Invalid Data',
+          text: `${invalidBookings.length} booking(s) tidak memiliki nama_member yang valid. Pastikan member profile sudah di-fetch dengan benar.`,
+          confirmButtonColor: '#ef4444',
+        });
+        setIsSyncingToAPI(false);
+        return;
+      }
+
+      // Prepare sync payload with correct member and PT names
+      // IMPORTANT FOR BACKEND: 
+      // - Use 'nama_member' field from each booking object in 'result' array (this is from member profile FULLNAME)
+      // - Use 'nama_pt' field from each booking object in 'result' array (this is from booking.name/location)
+      // - DO NOT use 'name' field from booking data for nama_member (it's the PT name, not member name)
+      // - Field 'nama_member' is REQUIRED and must NOT be NULL
+      const syncPayload = {
+        error: bookingData.error || null,
+        result: mappedBookings.map((b: any) => ({
+          ...b,
+          // Ensure nama_member is explicitly set and not null
+          nama_member: b.nama_member || memberName, // Fallback to memberName if somehow missing
+        })),
+        member_name: memberName, // This is the member's full name from profile (FULLNAME)
+        member_email: memberEmail,
+        member_id: currentMemberId,
+      };
+
+      console.log('=== SYNC PAYLOAD DEBUG ===');
+      console.log('Member name (from profile FULLNAME):', memberName);
+      console.log('Number of bookings:', mappedBookings.length);
+      console.log('First booking details:');
+      console.log('  - id:', mappedBookings[0]?.id);
+      console.log('  - nama_member:', mappedBookings[0]?.nama_member, '(from profile)');
+      console.log('  - nama_pt:', mappedBookings[0]?.nama_pt, '(from booking data)');
+      console.log('  - original booking.name:', mappedBookings[0]?.original_booking_name, '(PT name, should NOT be used for nama_member)');
+      console.log('Are nama_member and nama_pt different?', mappedBookings[0]?.nama_member !== mappedBookings[0]?.nama_pt);
+      
+      // Verify all bookings have correct nama_member
+      let hasError = false;
+      mappedBookings.forEach((booking: any, index: number) => {
+        if (booking.nama_member === booking.nama_pt) {
+          console.error(`❌ ERROR: Booking ${index} (ID: ${booking.id}) has sama nama_member dan nama_pt: "${booking.nama_member}"`);
+          hasError = true;
+        }
+        if (booking.nama_member === booking.original_booking_name) {
+          console.error(`❌ ERROR: Booking ${index} (ID: ${booking.id}) nama_member sama dengan original booking.name!`);
+          console.error('  This means backend might be using wrong field!');
+          hasError = true;
+        }
+      });
+      
+      if (hasError) {
+        console.error('⚠️ WARNING: Some bookings have incorrect mapping! Check the payload before sending.');
+      } else {
+        console.log('✅ All bookings have correct mapping!');
+      }
+      
+      console.log('Full sync payload (first 2 bookings):', JSON.stringify({
+        ...syncPayload,
+        result: syncPayload.result.slice(0, 2) // Show only first 2 for readability
+      }, null, 2));
+
+      const apiUrl = import.meta.env.VITE_API_PTCONDUCT || 'http://127.0.0.1:8088';
+      const response = await fetch(`${apiUrl}/api/ptconduct/sync-gymmaster`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(syncPayload),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
+        throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('Sync to API response:', data);
+      
+      // Refresh dashboard data after successful sync
+      if (authToken) {
+        await fetchDashboardData();
+      }
+      
+      // Show success alert
+      Swal.fire({
+        icon: 'success',
+        title: 'Sync Berhasil!',
+        text: 'Data booking berhasil di-sync ke sistem',
+        confirmButtonColor: '#10b981',
+        confirmButtonText: 'OK',
+      });
+    } catch (error) {
+      console.error('Error syncing to API:', error);
+      const errorMsg = error instanceof Error ? error.message : 'Terjadi kesalahan saat sync';
+      Swal.fire({
+        icon: 'error',
+        title: 'Sync Gagal',
+        text: errorMsg,
+        confirmButtonColor: '#ef4444',
+      });
+    } finally {
+      setIsSyncingToAPI(false);
+    }
+  };
+
+  // Function to handle sync API call (button hijau)
+  const handleSyncAPI = async () => {
+    if (!authToken) {
+      Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: 'No auth token available',
+        confirmButtonColor: '#ef4444',
+      });
+      return;
+    }
+
+    setIsSyncing(true);
+    try {
+      const apiUrl = import.meta.env.VITE_API_PTCONDUCT || 'http://127.0.0.1:8088';
+      const response = await fetch(`${apiUrl}/api/ptconduct/sync`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
+        throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('Sync API response:', data);
+      
+      // Refresh dashboard data after successful sync
+      if (authToken) {
+        await fetchDashboardData();
+      }
+      
+      // Show success alert with inserted count
+      if (data.ok) {
+        Swal.fire({
+          icon: 'success',
+          title: 'Sync Berhasil!',
+          html: `
+            <div style="text-align: left; margin-top: 1rem;">
+              <p style="margin: 0.5rem 0;"><strong>Inserted:</strong> ${data.inserted || 0}</p>
+              <p style="margin: 0.5rem 0;"><strong>Skipped:</strong> ${data.skipped || 0}</p>
+              <p style="margin: 0.5rem 0;"><strong>Total Processed:</strong> ${data.total_processed || 0}</p>
+            </div>
+          `,
+          confirmButtonColor: '#10b981',
+          confirmButtonText: 'OK',
+        });
+      } else {
+        throw new Error(data.error || 'Sync failed');
+      }
+    } catch (error) {
+      console.error('Error syncing:', error);
+      const errorMsg = error instanceof Error ? error.message : 'Terjadi kesalahan saat sync';
+      Swal.fire({
+        icon: 'error',
+        title: 'Sync Gagal',
+        text: errorMsg,
+        confirmButtonColor: '#ef4444',
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   // Show Face Checking page if needed
   if (showFaceChecking) {
     return (
@@ -622,6 +1074,28 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
               </svg>
               Sync
             </button>
+            <button 
+              onClick={handleSyncAPI}
+              disabled={isSyncing}
+              className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 disabled:cursor-not-allowed text-white border-none py-2.5 px-5 rounded-lg text-sm font-semibold cursor-pointer transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 disabled:transform-none flex items-center gap-2"
+            >
+              {isSyncing ? (
+                <>
+                  <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Syncing...
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Sync
+                </>
+              )}
+            </button>
           </div>
         </div>
 
@@ -676,7 +1150,7 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
                   <td className="hidden md:table-cell p-2 md:p-2.5 lg:p-3 border-b border-[#e5e7eb] text-[#333] text-left w-[110px]">
                     <div className="flex flex-col gap-0.5 md:gap-1">
                       <span className="text-[11px] md:text-[12px] lg:text-[13px] flex items-center gap-1">
-                        Gate: {member.gateStatus ? (
+                        Gate: {member.gateStatus && member.gateTime ? (
                           <img src={gateCheckIcon} alt="Checked" className="w-2.5 h-2.5 md:w-3 md:h-3" />
                         ) : (
                           <img src={uncheckIcon} alt="Unchecked" className="w-2.5 h-2.5 md:w-3 md:h-3" />
@@ -712,18 +1186,20 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
                         </svg>
                         Detail
                       </button>
-                      <button 
-                        onClick={() => {
-                          setSelectedMember(member);
-                          setIsModalOpen(true);
-                        }}
-                        className="bg-emerald-500 hover:bg-emerald-600 text-white border-none py-1.5 md:py-2 lg:py-2.5 px-3 md:px-4 lg:px-5 rounded-lg text-[10px] md:text-xs lg:text-sm font-semibold cursor-pointer transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 flex items-center justify-center gap-1.5 md:gap-2 whitespace-nowrap w-full md:w-auto"
-                      >
-                        <svg className="w-3.5 h-3.5 md:w-4 md:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        <span className="hidden sm:inline">Validation</span>
-                      </button>
+                      {member.gateStatus && member.gateTime && member.bookingStatus && (
+                        <button 
+                          onClick={() => {
+                            setSelectedMember(member);
+                            setIsModalOpen(true);
+                          }}
+                          className="bg-emerald-500 hover:bg-emerald-600 text-white border-none py-1.5 md:py-2 lg:py-2.5 px-3 md:px-4 lg:px-5 rounded-lg text-[10px] md:text-xs lg:text-sm font-semibold cursor-pointer transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 flex items-center justify-center gap-1.5 md:gap-2 whitespace-nowrap w-full md:w-auto"
+                        >
+                          <svg className="w-3.5 h-3.5 md:w-4 md:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <span className="hidden sm:inline">Validation</span>
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -952,9 +1428,9 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
               <div className="bg-gray-50 rounded-xl p-5 border border-gray-200">
                 <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Status</h4>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <div className={`flex items-center gap-3 p-4 rounded-lg border-2 ${selectedDetailMember.gateStatus ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${selectedDetailMember.gateStatus ? 'bg-green-100' : 'bg-red-100'}`}>
-                      {selectedDetailMember.gateStatus ? (
+                  <div className={`flex items-center gap-3 p-4 rounded-lg border-2 ${selectedDetailMember.gateStatus && selectedDetailMember.gateTime ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${selectedDetailMember.gateStatus && selectedDetailMember.gateTime ? 'bg-green-100' : 'bg-red-100'}`}>
+                      {selectedDetailMember.gateStatus && selectedDetailMember.gateTime ? (
                         <img src={gateCheckIcon} alt="Checked" className="w-5 h-5" />
                       ) : (
                         <img src={uncheckIcon} alt="Unchecked" className="w-5 h-5" />
@@ -1045,20 +1521,225 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
                   Batal
                 </button>
                 <button
-                  onClick={() => {
-                    if (memberId.trim()) {
-                      console.log('Sync Member ID:', memberId);
-                      // Add your sync logic here
-                      setIsSyncModalOpen(false);
-                      setMemberId('');
-                    }
-                  }}
-                  disabled={!memberId.trim()}
-                  className="flex-1 py-3 px-4 bg-gradient-to-br from-[#3b82f6] to-[#2563eb] text-white rounded-lg text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={handleSyncWithMemberId}
+                  disabled={!memberId.trim() || isFetchingBookings}
+                  className="flex-1 py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
-                  Submit
+                  {isFetchingBookings ? (
+                    <>
+                      <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Fetching...
+                    </>
+                  ) : (
+                    'Submit'
+                  )}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Booking Data Modal */}
+      {showBookingModal && bookingData && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowBookingModal(false)}>
+          <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-6 rounded-t-xl">
+              <div className="flex justify-between items-start">
+                <div className="flex-1">
+                  <h3 className="text-2xl font-bold text-white">Booking Data</h3>
+                  <p className="text-sm text-blue-100 mt-1">Member ID: {currentMemberId || 'N/A'}</p>
+                  {memberProfile && (
+                    <button
+                      onClick={() => setShowMemberProfile(!showMemberProfile)}
+                      className="mt-3 px-4 py-2 bg-white/20 hover:bg-white/30 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                      {showMemberProfile ? 'Sembunyikan' : 'Tampilkan'} Profil Member
+                    </button>
+                  )}
+                </div>
+                <button
+                  onClick={() => {
+                    setShowBookingModal(false);
+                    setBookingData(null);
+                    setMemberProfile(null);
+                    setShowMemberProfile(false);
+                  }}
+                  className="bg-white/20 hover:bg-white/30 text-white rounded-full p-2 transition-colors"
+                  aria-label="Close"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto p-6">
+              {/* Member Profile Section */}
+              {showMemberProfile && memberProfile && (
+                <div className="mb-6 bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 rounded-xl p-6 border-2 border-purple-200 shadow-lg">
+                  <div className="flex items-center gap-4 mb-4">
+                    <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-full flex items-center justify-center text-white text-2xl font-bold shadow-md">
+                      {(() => {
+                        const name = memberProfile?.data?.FULLNAME || 
+                                    memberProfile?.data?.full_name || 
+                                    memberProfile?.data?.fullname ||
+                                    memberProfile?.FULLNAME ||
+                                    memberProfile?.full_name ||
+                                    memberProfile?.data?.name || 
+                                    memberProfile?.name || 
+                                    'M';
+                        return name.charAt(0).toUpperCase();
+                      })()}
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="text-xl font-bold text-gray-900">
+                        {memberProfile?.data?.FULLNAME || 
+                         memberProfile?.data?.full_name || 
+                         memberProfile?.data?.fullname ||
+                         memberProfile?.FULLNAME ||
+                         memberProfile?.full_name ||
+                         memberProfile?.data?.name || 
+                         memberProfile?.name || 
+                         'N/A'}
+                      </h4>
+                      <p className="text-sm text-gray-600">
+                        {memberProfile?.data?.email || memberProfile?.email || 'Email tidak tersedia'}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                    {Object.entries(memberProfile?.data || memberProfile || {}).map(([key, value]: [string, any]) => {
+                      // Skip internal fields
+                      if (key === 'name' || key === 'email' || key === 'full_name' || 
+                          (typeof value === 'object' && value !== null && !Array.isArray(value))) {
+                        return null;
+                      }
+                      return (
+                        <div key={key} className="bg-white/70 rounded-lg p-3 border border-purple-100">
+                          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-1">
+                            {key.replace(/_/g, ' ')}
+                          </span>
+                          <span className="text-sm font-medium text-gray-900 break-words">
+                            {typeof value === 'object' && value !== null 
+                              ? JSON.stringify(value)
+                              : String(value || 'N/A')}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {(() => {
+                // Handle different response structures
+                let bookingsArray = null;
+                
+                if (Array.isArray(bookingData)) {
+                  // If response is directly an array
+                  bookingsArray = bookingData;
+                } else if (bookingData?.result && Array.isArray(bookingData.result)) {
+                  // If response has result field with array
+                  bookingsArray = bookingData.result;
+                } else if (bookingData?.data && Array.isArray(bookingData.data)) {
+                  // If response has data field with array
+                  bookingsArray = bookingData.data;
+                } else if (bookingData?.bookings && Array.isArray(bookingData.bookings)) {
+                  // If response has bookings field with array
+                  bookingsArray = bookingData.bookings;
+                }
+                
+                return (
+                  <>
+                    {bookingsArray && bookingsArray.length > 0 ? (
+                      <div className="space-y-4">
+                        {bookingsArray.map((booking: any, index: number) => (
+                          <div key={index} className="bg-gradient-to-br from-gray-50 to-white border-2 border-gray-200 rounded-lg p-5 hover:border-blue-300 transition-all shadow-sm hover:shadow-md">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              {Object.entries(booking).map(([key, value]: [string, any]) => (
+                                <div key={key} className="flex flex-col">
+                                  <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                                    {key.replace(/_/g, ' ')}
+                                  </span>
+                                  <span className="text-sm font-medium text-gray-900 break-words">
+                                    {typeof value === 'object' && value !== null 
+                                      ? JSON.stringify(value, null, 2)
+                                      : String(value || 'N/A')}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-12">
+                        <svg className="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        <p className="text-gray-500 text-lg font-medium">No booking data found</p>
+                        <p className="text-gray-400 text-sm mt-2">The response is empty or not in expected format</p>
+                      </div>
+                    )}
+                    
+                    {/* Raw JSON View (Collapsible) */}
+                    <details className="mt-6">
+                      <summary className="cursor-pointer text-sm font-semibold text-gray-700 hover:text-blue-600 transition-colors mb-2">
+                        View Raw JSON
+                      </summary>
+                      <pre className="bg-gray-900 text-green-400 p-4 rounded-lg overflow-x-auto text-xs font-mono max-h-96 overflow-y-auto">
+                        {JSON.stringify(bookingData, null, 2)}
+                      </pre>
+                    </details>
+                  </>
+                );
+              })()}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="border-t border-gray-200 p-4 bg-gray-50 flex justify-between items-center gap-3">
+              <button
+                onClick={handleSyncToAPI}
+                disabled={isSyncingToAPI || !bookingData}
+                className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 disabled:cursor-not-allowed text-white rounded-lg text-sm font-semibold transition-all flex items-center gap-2"
+              >
+                {isSyncingToAPI ? (
+                  <>
+                    <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Syncing...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    Sync to API
+                  </>
+                )}
+              </button>
+              <button
+                onClick={() => {
+                  setShowBookingModal(false);
+                  setBookingData(null);
+                }}
+                className="px-6 py-2.5 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-sm font-semibold transition-colors"
+              >
+                Close
+              </button>
             </div>
           </div>
         </div>
