@@ -20,9 +20,11 @@ interface FaceValidationProps {
   onBack: () => void;
   authToken?: string;
   userEmail?: string;
+  /** 'member' → POST check-booking (image_b64, gate_time); 'pt' → POST check-booking-pt (start_time, imagebase64) */
+  validateAs: 'member' | 'pt';
 }
 
-const FaceValidation = ({ member, onBack, authToken, userEmail }: FaceValidationProps) => {
+const FaceValidation = ({ member, onBack, authToken, userEmail, validateAs }: FaceValidationProps) => {
   const [currentDateTime, setCurrentDateTime] = useState(new Date());
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [blinkCount, setBlinkCount] = useState(0);
@@ -137,7 +139,7 @@ const FaceValidation = ({ member, onBack, authToken, userEmail }: FaceValidation
     return canvas.toDataURL('image/jpeg', 0.8);
   };
 
-  // Function to send image to API
+  // Function to send image to API: Member → check-booking; PT → check-booking-pt
   const sendImageToAPI = async (imageBase64: string) => {
     if (!authToken) {
       console.error('No auth token available');
@@ -148,17 +150,55 @@ const FaceValidation = ({ member, onBack, authToken, userEmail }: FaceValidation
     setIsSubmitting(true);
     setSubmitStatus('idle');
 
-    // Format gate_time from current member data
-    const gateTimeFormatted = formatGateTimeForAPI(member.gateTime);
-    console.log('Sending check-booking request:', {
+    const apiUrl = import.meta.env.VITE_API_PTCONDUCT || 'http://127.0.0.1:8088';
+    // Member & PT: BE cocokkan by tanggal booking. Kirim tanggal booking + waktu saat face check (hindari timezone shift).
+    const gateTimeForMember = getGateTimeForMemberCheck();
+    const startTimeForPt = gateTimeForMember;
+
+    if (validateAs === 'pt') {
+      // Personal Trainer: POST /api/ptconduct/check-booking-pt { start_time, imagebase64 }
+      // start_time = tanggal booking + waktu saat ini (BE cocokkan by tanggal, sama seperti gate_time Member)
+      console.log('Sending check-booking-pt request:', { memberId: member.id, nama_pt: member.pt, start_time: startTimeForPt });
+      try {
+        const response = await fetch(`${apiUrl}/api/ptconduct/check-booking-pt`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${authToken}`
+          },
+          body: JSON.stringify({
+            start_time: startTimeForPt,
+            imagebase64: imageBase64
+          })
+        });
+        const data = await response.json();
+        setApiResponse(data);
+        if (!response.ok) {
+          setSubmitStatus('error');
+          setTimeout(() => setSubmitStatus('idle'), 3000);
+          return;
+        }
+        setSubmitStatus('success');
+        setTimeout(() => setSubmitStatus('idle'), 3000);
+      } catch (error) {
+        console.error('Error sending image to check-booking-pt:', error);
+        setSubmitStatus('error');
+        setTimeout(() => setSubmitStatus('idle'), 3000);
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
+
+    // Member: POST /api/ptconduct/check-booking { image_b64, gate_time }
+    // gate_time = tanggal hari booking + waktu saat face check (BE cocokkan by tanggal)
+    console.log('Sending check-booking request (Member):', {
       memberId: member.id,
       memberName: member.name,
-      gateTime: member.gateTime,
-      gateTimeFormatted: gateTimeFormatted
+      gate_time: gateTimeForMember
     });
 
     try {
-      const apiUrl = import.meta.env.VITE_API_PTCONDUCT || 'http://127.0.0.1:8088';
       const response = await fetch(`${apiUrl}/api/ptconduct/check-booking`, {
         method: 'POST',
         headers: {
@@ -167,7 +207,7 @@ const FaceValidation = ({ member, onBack, authToken, userEmail }: FaceValidation
         },
         body: JSON.stringify({
           image_b64: imageBase64,
-          gate_time: gateTimeFormatted
+          gate_time: gateTimeForMember
         })
       });
 
@@ -269,6 +309,45 @@ const FaceValidation = ({ member, onBack, authToken, userEmail }: FaceValidation
       const minutes = String(now.getMinutes()).padStart(2, '0');
       const seconds = String(now.getSeconds()).padStart(2, '0');
       return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+    }
+  };
+
+  // Ambil tanggal YYYY-MM-DD dari string tanpa timezone shift (hindari new Date() yang bisa geser tanggal).
+  const getBookingDateOnly = (dateStr: string): string | null => {
+    if (!dateStr || typeof dateStr !== 'string') return null;
+    const trimmed = dateStr.trim();
+    const match = trimmed.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (match) return match[1];
+    try {
+      const date = new Date(trimmed);
+      if (Number.isNaN(date.getTime())) return null;
+      const y = date.getFullYear();
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      const d = String(date.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    } catch {
+      return null;
+    }
+  };
+
+  // Untuk check-booking (Member) & start_time (PT): BE cocokkan by tanggal. Kirim tanggal booking + waktu saat face check.
+  const getGateTimeForMemberCheck = (): string => {
+    const dateStr = member.gateTime || member.start;
+    const bookingDateOnly = getBookingDateOnly(dateStr || '');
+    const now = new Date();
+    const h = String(now.getHours()).padStart(2, '0');
+    const min = String(now.getMinutes()).padStart(2, '0');
+    const s = String(now.getSeconds()).padStart(2, '0');
+    if (bookingDateOnly) return `${bookingDateOnly} ${h}:${min}:${s}`;
+    try {
+      const fallback = new Date(dateStr);
+      const y = fallback.getFullYear();
+      const m = String(fallback.getMonth() + 1).padStart(2, '0');
+      const d = String(fallback.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d} ${h}:${min}:${s}`;
+    } catch {
+      const n = new Date();
+      return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')} ${h}:${min}:${s}`;
     }
   };
 

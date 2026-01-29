@@ -74,6 +74,51 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
   const [selectedClub, setSelectedClub] = useState<string>('');
   const [isLoadingClubs, setIsLoadingClubs] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string>('');
+  // Tab: 'horizon' | 'gymmaster'
+  const [activeTab, setActiveTab] = useState<'horizon' | 'gymmaster'>('horizon');
+  const [gymmasterData, setGymmasterData] = useState<any>(null);
+  const [gymmasterLoading, setGymmasterLoading] = useState(false);
+  const [gymmasterError, setGymmasterError] = useState<string>('');
+  const [selectedGymmasterDetail, setSelectedGymmasterDetail] = useState<Record<string, unknown> | null>(null);
+  const [isGymmasterDetailModalOpen, setIsGymmasterDetailModalOpen] = useState(false);
+  const [validationSource, setValidationSource] = useState<'horizon' | 'gymmaster'>('horizon');
+  const [validationTarget, setValidationTarget] = useState<'member' | 'pt'>('member');
+
+  // Kolom yang ditampilkan di tab Gymmaster Dashboard (key API -> label)
+  const GYMMASTER_COLUMNS: { keys: string[]; label: string }[] = [
+    { keys: ['nama_member', 'namaMember', 'name'], label: 'Nama Member' },
+    { keys: ['nama_pt', 'namaPt', 'pt'], label: 'Nama PT' },
+    { keys: ['start_time', 'startTime', 'start'], label: 'Start Time' },
+    { keys: ['end_time', 'endTime', 'end'], label: 'End Time' },
+  ];
+
+  const getGymmasterCell = (row: Record<string, unknown>, col: { keys: string[] }) => {
+    for (const key of col.keys) {
+      if (Object.prototype.hasOwnProperty.call(row, key)) {
+        const val = row[key];
+        return typeof val === 'object' && val !== null ? JSON.stringify(val) : String(val ?? '');
+      }
+    }
+    return '';
+  };
+
+  // Konversi baris Gymmaster ke Member (untuk modal validasi & FaceValidation)
+  const gymmasterRowToMember = (row: Record<string, unknown>, index: number): Member => {
+    const startTime = getGymmasterCell(row, GYMMASTER_COLUMNS[2]);
+    const rawId = row.id ?? row.booking_id ?? index + 1;
+    return {
+      id: typeof rawId === 'number' ? rawId : Number(rawId) || index + 1,
+      name: getGymmasterCell(row, GYMMASTER_COLUMNS[0]),
+      pt: getGymmasterCell(row, GYMMASTER_COLUMNS[1]),
+      start: startTime,
+      end: getGymmasterCell(row, GYMMASTER_COLUMNS[3]),
+      gateTime: startTime,
+      gateStatus: true,
+      bookingStatus: true,
+      faceStatus: false,
+      faceBookingMember: 0,
+    };
+  };
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -328,6 +373,38 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
     }
   };
 
+  // Fetch dashboard-gymmaster data from API
+  const fetchDashboardGymmaster = async () => {
+    if (!authToken) {
+      setGymmasterError('No auth token available');
+      return;
+    }
+    setGymmasterLoading(true);
+    setGymmasterError('');
+    try {
+      const apiUrl = import.meta.env.VITE_API_PTCONDUCT || 'http://127.0.0.1:8088';
+      const response = await fetch(`${apiUrl}/api/ptconduct/dashboard-gymmaster`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const data = await response.json();
+      setGymmasterData(data);
+    } catch (error) {
+      console.error('Error fetching dashboard-gymmaster:', error);
+      const errorMsg = error instanceof Error ? error.message : 'Gagal mengambil data dashboard Gymmaster';
+      setGymmasterError(errorMsg);
+      setGymmasterData(null);
+    } finally {
+      setGymmasterLoading(false);
+    }
+  };
+
   // Debounce search query to avoid too many API calls
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -370,6 +447,14 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
     fetchDashboardData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authToken, selectedDate, searchDebounce, searchPtDebounce, gateChecked, bookingChecked, selectedClub]);
+
+  // Fetch gymmaster dashboard when tab is gymmaster
+  useEffect(() => {
+    if (activeTab === 'gymmaster' && authToken) {
+      fetchDashboardGymmaster();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, authToken]);
 
   // Filtering is now done on the backend via API
   // No need for client-side filtering since API handles it
@@ -849,13 +934,15 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
         onBack={() => {
           setShowFaceValidation(false);
           setValidationMember(null);
-          // Refresh dashboard data when going back
+          // Refresh dashboard data when going back (Horizon + Gymmaster)
           if (authToken) {
             fetchDashboardData();
+            fetchDashboardGymmaster();
           }
         }}
         authToken={authToken}
         userEmail={userEmail}
+        validateAs={validationTarget}
       />
     );
   }
@@ -944,6 +1031,35 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
         </div>
       </nav>
 
+      {/* Tab Navigation */}
+      <div className="flex gap-2 mb-4 sm:mb-5 md:mb-6 border-b border-[#e5e7eb] bg-white rounded-lg shadow-sm p-1">
+        <button
+          type="button"
+          onClick={() => setActiveTab('horizon')}
+          className={`flex-1 sm:flex-none px-4 sm:px-6 py-2.5 sm:py-3 rounded-lg text-sm font-semibold transition-all duration-200 ${
+            activeTab === 'horizon'
+              ? 'bg-[#3b82f6] text-white shadow-md'
+              : 'bg-transparent text-[#666] hover:bg-[#f1f5f9] hover:text-[#333]'
+          }`}
+        >
+          Horizon Dashboard
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('gymmaster')}
+          className={`flex-1 sm:flex-none px-4 sm:px-6 py-2.5 sm:py-3 rounded-lg text-sm font-semibold transition-all duration-200 ${
+            activeTab === 'gymmaster'
+              ? 'bg-[#3b82f6] text-white shadow-md'
+              : 'bg-transparent text-[#666] hover:bg-[#f1f5f9] hover:text-[#333]'
+          }`}
+        >
+          Gymmaster Dashboard
+        </button>
+      </div>
+
+      {/* Tab: Horizon Dashboard */}
+      {activeTab === 'horizon' && (
+        <>
       {/* Error Message */}
       {errorMessage && (
         <div className="mx-4 sm:mx-6 lg:mx-8 mt-4 p-4 bg-red-50 border border-red-200 rounded-md">
@@ -1066,15 +1182,6 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
               <span className="text-sm text-[#333]">Booking Checked</span>
             </label>
             <button 
-              onClick={() => setIsSyncModalOpen(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white border-none py-2.5 px-5 rounded-lg text-sm font-semibold cursor-pointer transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 flex items-center gap-2"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-              Sync
-            </button>
-            <button 
               onClick={handleSyncAPI}
               disabled={isSyncing}
               className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 disabled:cursor-not-allowed text-white border-none py-2.5 px-5 rounded-lg text-sm font-semibold cursor-pointer transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 disabled:transform-none flex items-center gap-2"
@@ -1190,6 +1297,7 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
                         <button 
                           onClick={() => {
                             setSelectedMember(member);
+                            setValidationSource('horizon');
                             setIsModalOpen(true);
                           }}
                           className="bg-emerald-500 hover:bg-emerald-600 text-white border-none py-1.5 md:py-2 lg:py-2.5 px-3 md:px-4 lg:px-5 rounded-lg text-[10px] md:text-xs lg:text-sm font-semibold cursor-pointer transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 flex items-center justify-center gap-1.5 md:gap-2 whitespace-nowrap w-full md:w-auto"
@@ -1277,6 +1385,211 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
           </div>
         )}
       </div>
+        </>
+      )}
+
+      {/* Tab: Gymmaster Dashboard */}
+      {activeTab === 'gymmaster' && (
+        <div className="bg-white p-4 sm:p-5 md:p-6 rounded-xl shadow-md overflow-hidden">
+          <div className="mb-4 sm:mb-5 md:mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <h2 className="m-0 mb-1 text-base sm:text-lg md:text-xl font-semibold text-[#1a1a1a]">Dashboard Gymmaster</h2>
+              <p className="m-0 text-xs sm:text-sm text-[#666]">Data dari API dashboard-gymmaster</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsSyncModalOpen(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white border-none py-2.5 px-5 rounded-lg text-sm font-semibold cursor-pointer transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 flex items-center justify-center gap-2 self-start sm:self-center"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Sync
+            </button>
+          </div>
+
+          {gymmasterError && (
+            <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-md flex items-center gap-2">
+              <svg className="w-5 h-5 text-red-600 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              </svg>
+              <p className="text-sm text-red-800">{gymmasterError}</p>
+            </div>
+          )}
+
+          {gymmasterLoading && (
+            <div className="flex items-center justify-center py-12">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-10 w-10 border-2 border-[#3b82f6] border-t-transparent mx-auto mb-3" />
+                <p className="text-sm text-gray-600">Memuat data Gymmaster...</p>
+              </div>
+            </div>
+          )}
+
+          {!gymmasterLoading && gymmasterData && (
+            <>
+              {/* Statistics if present */}
+              {(gymmasterData.statistics || gymmasterData.stats) && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+                  {Object.entries(gymmasterData.statistics || gymmasterData.stats || {}).map(([key, value]: [string, unknown]) => (
+                    <div key={key} className="bg-[#f8f9fa] rounded-lg p-4 border border-[#e5e7eb]">
+                      <p className="text-xs font-semibold text-[#666] uppercase tracking-wide mb-1">{String(key).replace(/_/g, ' ')}</p>
+                      <p className="text-xl font-bold text-[#1a1a1a]">{typeof value === 'object' ? JSON.stringify(value) : String(value)}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Data table: hanya Nama Member, Nama PT, Start Time, End Time, checkin Source, Attended */}
+              {(() => {
+                const rows = Array.isArray(gymmasterData.data) ? gymmasterData.data : (Array.isArray(gymmasterData) ? gymmasterData : []);
+                if (rows.length === 0) return null;
+                return (
+                  <div className="overflow-x-auto -mx-4 md:mx-0 px-4 md:px-0">
+                    <table className="w-full border-collapse text-xs md:text-sm min-w-[500px]">
+                      <thead className="bg-[#f8f9fa]">
+                        <tr>
+                          <th className="p-2 md:p-2.5 text-center font-semibold text-[#333] border-b-2 border-[#e5e7eb] w-10">No</th>
+                          {GYMMASTER_COLUMNS.map((col) => (
+                            <th key={col.label} className="p-2 md:p-2.5 text-left font-semibold text-[#333] border-b-2 border-[#e5e7eb]">
+                              {col.label}
+                            </th>
+                          ))}
+                          <th className="p-2 md:p-2.5 text-center font-semibold text-[#333] border-b-2 border-[#e5e7eb]" style={{ width: '120px', minWidth: '120px' }}>Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.map((row: Record<string, unknown>, index: number) => {
+                          const faceBookingPt = row.face_booking_pt ?? row.faceBookingPt;
+                          const isPtValidated = faceBookingPt === 1 || faceBookingPt === '1';
+                          return (
+                          <tr key={index} className="hover:bg-[#f9fafb]">
+                            <td className="p-2 md:p-2.5 border-b border-[#e5e7eb] text-[#333] text-center">{index + 1}</td>
+                            {GYMMASTER_COLUMNS.map((col) => (
+                              <td key={col.label} className="p-2 md:p-2.5 border-b border-[#e5e7eb] text-[#333] text-left break-words" style={col.label === 'Nama PT' ? { width: '150px', maxWidth: '150px', wordWrap: 'break-word', overflowWrap: 'break-word', whiteSpace: 'normal' } as React.CSSProperties : undefined}>
+                                {col.label === 'Nama PT' ? (
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="font-medium">{getGymmasterCell(row, col)}</span>
+                                    {isPtValidated && (
+                                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] md:text-[11px] font-semibold bg-gradient-to-r from-green-50 to-emerald-50 text-green-700 border border-green-200 shadow-sm">
+                                        <svg className="w-3 h-3 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                                        </svg>
+                                        <span>Validated</span>
+                                      </span>
+                                    )}
+                                  </div>
+                                ) : (
+                                  getGymmasterCell(row, col)
+                                )}
+                              </td>
+                            ))}
+                            <td className="p-2 md:p-2.5 border-b border-[#e5e7eb] text-[#333] text-center align-top" style={{ width: '120px', minWidth: '120px' }}>
+                              <div className="flex flex-col md:flex-row justify-center items-center gap-1.5 md:gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedGymmasterDetail(row);
+                                    setIsGymmasterDetailModalOpen(true);
+                                  }}
+                                  className="bg-slate-600 hover:bg-slate-700 text-white border-none py-1.5 md:py-2 lg:py-2.5 px-3 md:px-4 rounded-lg text-[10px] md:text-xs font-semibold cursor-pointer transition-all duration-300 shadow-sm hover:shadow-md transform hover:-translate-y-0.5 flex items-center justify-center gap-1.5 whitespace-nowrap w-full md:w-auto"
+                                >
+                                  <svg className="w-3.5 h-3.5 md:w-4 md:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                  </svg>
+                                  Detail
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const member = gymmasterRowToMember(row, index);
+                                    setSelectedMember(member);
+                                    setValidationSource('gymmaster');
+                                    setIsModalOpen(true);
+                                  }}
+                                  className="bg-emerald-500 hover:bg-emerald-600 text-white border-none py-1.5 md:py-2 lg:py-2.5 px-3 md:px-4 lg:px-5 rounded-lg text-[10px] md:text-xs lg:text-sm font-semibold cursor-pointer transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 flex items-center justify-center gap-1.5 md:gap-2 whitespace-nowrap w-full md:w-auto"
+                                >
+                                  <svg className="w-3.5 h-3.5 md:w-4 md:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                  </svg>
+                                  <span className="hidden sm:inline">Validation</span>
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()}
+              {(() => {
+                const rows = Array.isArray(gymmasterData.data) ? gymmasterData.data : (Array.isArray(gymmasterData) ? gymmasterData : []);
+                if (rows.length > 0) return null;
+                return (
+                  <div className="text-center py-12 bg-[#f8f9fa] rounded-lg border border-[#e5e7eb]">
+                    <p className="text-gray-500 text-sm">Tidak ada data list. Response API:</p>
+                    <pre className="mt-4 text-left bg-gray-900 text-green-400 p-4 rounded-lg overflow-x-auto text-xs font-mono max-h-80 overflow-y-auto mx-auto max-w-full">
+                      {JSON.stringify(gymmasterData, null, 2)}
+                    </pre>
+                  </div>
+                );
+              })()}
+            </>
+          )}
+
+          {!gymmasterLoading && !gymmasterData && !gymmasterError && (
+            <div className="text-center py-12 text-gray-500 text-sm">
+              Klik tab ini untuk memuat data. Jika sudah diklik, data kosong atau format tidak dikenali.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Gymmaster Detail Modal */}
+      {isGymmasterDetailModalOpen && selectedGymmasterDetail && (
+        <div className="fixed inset-0 bg-transparent backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setIsGymmasterDetailModalOpen(false)}>
+          <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="bg-gradient-to-r from-[#3b82f6] to-[#2563eb] p-6 rounded-t-xl">
+              <div className="flex justify-between items-start">
+                <div>
+                  <h3 className="text-xl font-bold text-white">Detail Gymmaster</h3>
+                  <p className="text-sm text-blue-100 mt-1">Informasi booking</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsGymmasterDetailModalOpen(false)}
+                  className="bg-red-500 hover:bg-red-600 text-white transition-all rounded-full p-2 flex items-center justify-center w-10 h-10 flex-shrink-0"
+                  aria-label="Close"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div className="p-6 space-y-6">
+              <div className="bg-gradient-to-br from-purple-50 to-blue-50 rounded-xl p-5 border border-purple-100">
+                <div className="flex items-center gap-4">
+                  <div className="flex-1">
+                    <h4 className="text-lg font-semibold text-gray-900">{getGymmasterCell(selectedGymmasterDetail, GYMMASTER_COLUMNS[0]) || 'N/A'}</h4>
+                    <p className="text-sm text-gray-600 mt-1">PT: {getGymmasterCell(selectedGymmasterDetail, GYMMASTER_COLUMNS[1]) || 'N/A'}</p>
+                  </div>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {GYMMASTER_COLUMNS.map((col) => (
+                  <div key={col.label} className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{col.label}</label>
+                    <p className="text-base font-semibold text-gray-900 mt-2 break-words">{getGymmasterCell(selectedGymmasterDetail, col) || 'N/A'}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal */}
       {isModalOpen && selectedMember && (
@@ -1305,6 +1618,7 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
               <button
                 onClick={() => {
                   console.log('Validasi Member:', selectedMember.name);
+                  setValidationTarget('member');
                   setValidationMember(selectedMember);
                   setIsModalOpen(false);
                   setShowFaceValidation(true);
@@ -1331,6 +1645,7 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
               <button
                 onClick={() => {
                   console.log('Validasi Personal Trainer:', selectedMember.pt);
+                  setValidationTarget('pt');
                   setValidationMember(selectedMember);
                   setIsModalOpen(false);
                   setShowFaceValidation(true);
@@ -1466,6 +1781,7 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
                 <button
                   onClick={() => {
                     setSelectedMember(selectedDetailMember);
+                    setValidationSource('horizon');
                     setIsDetailModalOpen(false);
                     setIsModalOpen(true);
                   }}
