@@ -20,11 +20,13 @@ interface FaceValidationProps {
   onBack: () => void;
   authToken?: string;
   userEmail?: string;
-  /** 'member' → POST check-booking (image_b64, gate_time); 'pt' → POST check-booking-pt (start_time, imagebase64) */
+  /** Horizon vs Gymmaster: menentukan endpoint (check-booking vs check-booking-gymmaster-*) */
+  validationSource?: 'horizon' | 'gymmaster';
+  /** Member vs PT: menentukan pilihan user di modal */
   validateAs: 'member' | 'pt';
 }
 
-const FaceValidation = ({ member, onBack, authToken, userEmail, validateAs }: FaceValidationProps) => {
+const FaceValidation = ({ member, onBack, authToken, userEmail, validationSource = 'horizon', validateAs }: FaceValidationProps) => {
   const [currentDateTime, setCurrentDateTime] = useState(new Date());
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [blinkCount, setBlinkCount] = useState(0);
@@ -51,6 +53,13 @@ const FaceValidation = ({ member, onBack, authToken, userEmail, validateAs }: Fa
   const cameraRef = useRef<Camera | null>(null);
   const isSetupRef = useRef(false);
   const lastBlinkCaptureRef = useRef<number>(0);
+
+  // Normalisasi nama untuk perbandingan (case-insensitive, trim)
+  const normalizeName = (s: string) => (s || '').trim().toUpperCase();
+  const expectedBookingName = validateAs === 'member' ? member.name : member.pt;
+  const faceMatchesBooking = apiResponse?.nama
+    ? normalizeName(apiResponse.nama) === normalizeName(expectedBookingName)
+    : false;
   
   // Eye landmarks indices (MediaPipe Face Mesh) - using key points for EAR calculation
   // Left eye: [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246]
@@ -139,7 +148,11 @@ const FaceValidation = ({ member, onBack, authToken, userEmail, validateAs }: Fa
     return canvas.toDataURL('image/jpeg', 0.8);
   };
 
-  // Function to send image to API: Member → check-booking; PT → check-booking-pt
+  // Function to send image to API - 4 alur sesuai spesifikasi:
+  // Horizon+Member → check-booking (image_b64, gate_time)
+  // Horizon+PT → check-booking-pt (start_time, imagebase64)
+  // Gymmaster+Member → check-booking-gymmaster-member (start_time, imagebase64)
+  // Gymmaster+PT → check-booking-gymmaster (start_time, imagebase64)
   const sendImageToAPI = async (imageBase64: string) => {
     if (!authToken) {
       console.error('No auth token available');
@@ -151,37 +164,30 @@ const FaceValidation = ({ member, onBack, authToken, userEmail, validateAs }: Fa
     setSubmitStatus('idle');
 
     const apiUrl = import.meta.env.VITE_API_PTCONDUCT || 'http://127.0.0.1:8088';
-    // Member & PT: BE cocokkan by tanggal booking. Kirim tanggal booking + waktu saat face check (hindari timezone shift).
-    const gateTimeForMember = getGateTimeForMemberCheck();
-    const startTimeForPt = gateTimeForMember;
+    // Horizon Member (check-booking): gate_time = gate_time dari booking yang divalidasi (bukan waktu saat ini / bukan milik wajah yang terdeteksi)
+    const gateTimeForMember = formatGateTimeForAPI(member.gateTime || member.start);
+    // start_time untuk Gymmaster & Horizon PT: pakai waktu START booking dari data (sama dengan yang di UI)
+    const startTimeFromBooking = formatGateTimeForAPI(member.start || member.gateTime);
 
-    if (validateAs === 'pt') {
-      // Personal Trainer: POST /api/ptconduct/check-booking-pt { start_time, imagebase64 }
-      // start_time = tanggal booking + waktu saat ini (BE cocokkan by tanggal, sama seperti gate_time Member)
-      console.log('Sending check-booking-pt request:', { memberId: member.id, nama_pt: member.pt, start_time: startTimeForPt });
+    const isGymmaster = validationSource === 'gymmaster';
+
+    // 1) Gymmaster + Member → check-booking-gymmaster-member (start_time = START di UI)
+    if (isGymmaster && validateAs === 'member') {
+      const path = '/api/ptconduct/check-booking-gymmaster-member';
+      console.log('Sending', path, { memberId: member.id, start_time: startTimeFromBooking });
       try {
-        const response = await fetch(`${apiUrl}/api/ptconduct/check-booking-pt`, {
+        const response = await fetch(`${apiUrl}${path}`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${authToken}`
-          },
-          body: JSON.stringify({
-            start_time: startTimeForPt,
-            imagebase64: imageBase64
-          })
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+          body: JSON.stringify({ start_time: startTimeFromBooking, imagebase64: imageBase64 })
         });
         const data = await response.json();
         setApiResponse(data);
-        if (!response.ok) {
-          setSubmitStatus('error');
-          setTimeout(() => setSubmitStatus('idle'), 3000);
-          return;
-        }
+        if (!response.ok) { setSubmitStatus('error'); setTimeout(() => setSubmitStatus('idle'), 3000); return; }
         setSubmitStatus('success');
         setTimeout(() => setSubmitStatus('idle'), 3000);
       } catch (error) {
-        console.error('Error sending image to check-booking-pt:', error);
+        console.error('Error', path, error);
         setSubmitStatus('error');
         setTimeout(() => setSubmitStatus('idle'), 3000);
       } finally {
@@ -190,21 +196,64 @@ const FaceValidation = ({ member, onBack, authToken, userEmail, validateAs }: Fa
       return;
     }
 
-    // Member: POST /api/ptconduct/check-booking { image_b64, gate_time }
-    // gate_time = tanggal hari booking + waktu saat face check (BE cocokkan by tanggal)
-    console.log('Sending check-booking request (Member):', {
-      memberId: member.id,
-      memberName: member.name,
-      gate_time: gateTimeForMember
-    });
+    // 2) Gymmaster + PT → check-booking-gymmaster (start_time = START di UI)
+    if (isGymmaster && validateAs === 'pt') {
+      const path = '/api/ptconduct/check-booking-gymmaster';
+      console.log('Sending', path, { memberId: member.id, nama_pt: member.pt, start_time: startTimeFromBooking });
+      try {
+        const response = await fetch(`${apiUrl}${path}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+          body: JSON.stringify({ start_time: startTimeFromBooking, imagebase64: imageBase64 })
+        });
+        const data = await response.json();
+        setApiResponse(data);
+        if (!response.ok) { setSubmitStatus('error'); setTimeout(() => setSubmitStatus('idle'), 3000); return; }
+        setSubmitStatus('success');
+        setTimeout(() => setSubmitStatus('idle'), 3000);
+      } catch (error) {
+        console.error('Error', path, error);
+        setSubmitStatus('error');
+        setTimeout(() => setSubmitStatus('idle'), 3000);
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
+
+    // 3) Horizon + PT → check-booking-pt (start_time = START di UI)
+    if (!isGymmaster && validateAs === 'pt') {
+      const path = '/api/ptconduct/check-booking-pt';
+      console.log('Sending', path, { memberId: member.id, nama_pt: member.pt, start_time: startTimeFromBooking });
+      try {
+        const response = await fetch(`${apiUrl}${path}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+          body: JSON.stringify({ start_time: startTimeFromBooking, imagebase64: imageBase64 })
+        });
+        const data = await response.json();
+        setApiResponse(data);
+        if (!response.ok) { setSubmitStatus('error'); setTimeout(() => setSubmitStatus('idle'), 3000); return; }
+        setSubmitStatus('success');
+        setTimeout(() => setSubmitStatus('idle'), 3000);
+      } catch (error) {
+        console.error('Error', path, error);
+        setSubmitStatus('error');
+        setTimeout(() => setSubmitStatus('idle'), 3000);
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
+
+    // 4) Horizon + Member → check-booking (image_b64, gate_time)
+    const path = '/api/ptconduct/check-booking';
+    console.log('Sending', path, { memberId: member.id, memberName: member.name, gate_time: gateTimeForMember });
 
     try {
-      const response = await fetch(`${apiUrl}/api/ptconduct/check-booking`, {
+      const response = await fetch(`${apiUrl}${path}`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authToken}`
-        },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
         body: JSON.stringify({
           image_b64: imageBase64,
           gate_time: gateTimeForMember
@@ -775,17 +824,26 @@ const FaceValidation = ({ member, onBack, authToken, userEmail, validateAs }: Fa
             </div>
           </div>
 
-          {/* Validation Status Badge */}
-          <div className="w-full">
-            {member.faceBookingMember === 1 ? (
-              <span className="flex items-center justify-center gap-2 w-full px-6 py-3.5 rounded-lg text-sm font-bold bg-gradient-to-br from-green-600 via-emerald-500 to-green-700 text-white shadow-[0_4px_15px_rgba(34,197,94,0.4),0_2px_5px_rgba(0,0,0,0.2),inset_0_1px_0_rgba(255,255,255,0.2)] border-2 border-green-400/60 transform hover:scale-[1.02] transition-transform">
-                <svg className="w-5 h-5 drop-shadow-md" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          {/* Validation Status Badge: hijau "Validated" hanya jika wajah terdeteksi cocok dengan member/PT booking ini */}
+          <div className="w-full transition-all duration-500 ease-out">
+            {(
+              (validateAs === 'member' && member.faceBookingMember === 1) ||
+              (apiResponse?.ok && apiResponse?.has_booking === true && faceMatchesBooking)
+            ) ? (
+              <span
+                key="validated"
+                className={`flex items-center justify-center gap-2 w-full px-6 py-3.5 rounded-lg text-sm font-bold bg-gradient-to-br from-green-600 via-emerald-500 to-green-700 text-white shadow-[0_4px_15px_rgba(34,197,94,0.4),0_2px_5px_rgba(0,0,0,0.2),inset_0_1px_0_rgba(255,255,255,0.2)] border-2 border-green-400/60 hover:scale-[1.02] transition-transform ${apiResponse?.ok && apiResponse?.has_booking === true && faceMatchesBooking ? 'animate-validated-badge' : ''}`}
+              >
+                <svg className="w-5 h-5 drop-shadow-md flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                Tervalidasi
+                Validated
               </span>
             ) : (
-              <span className="flex items-center justify-center gap-2 w-full px-6 py-3.5 rounded-lg text-sm font-bold bg-gradient-to-br from-red-600 via-red-500 to-red-700 text-white shadow-[0_4px_15px_rgba(239,68,68,0.4),0_2px_5px_rgba(0,0,0,0.2),inset_0_1px_0_rgba(255,255,255,0.2)] border-2 border-red-400/60 transform hover:scale-[1.02] transition-transform">
+              <span
+                key="not-validated"
+                className="flex items-center justify-center gap-2 w-full px-6 py-3.5 rounded-lg text-sm font-bold bg-gradient-to-br from-red-600 via-red-500 to-red-700 text-white shadow-[0_4px_15px_rgba(239,68,68,0.4),0_2px_5px_rgba(0,0,0,0.2),inset_0_1px_0_rgba(255,255,255,0.2)] border-2 border-red-400/60 transform hover:scale-[1.02] transition-transform"
+              >
                 <svg className="w-5 h-5 drop-shadow-md" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
@@ -800,7 +858,14 @@ const FaceValidation = ({ member, onBack, authToken, userEmail, validateAs }: Fa
       <div className="bg-white rounded-xl shadow-md p-4 sm:p-5 md:p-6">
         <div className="mb-3 sm:mb-4 md:mb-5">
           <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-1.5">Verifikasi Wajah</label>
-          <p className="text-sm text-gray-600">Posisikan wajah Anda di depan kamera</p>
+          <p className="text-sm text-gray-600 mb-1">Posisikan wajah Anda di depan kamera.</p>
+          <p className="text-sm font-medium text-blue-700 bg-blue-50/80 border border-blue-200 rounded-lg px-3 py-2 inline-flex items-center gap-2">
+            <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+            </svg>
+            Kedipkan mata (blink) saat kamera aktif agar foto wajah dapat diambil untuk validasi.
+          </p>
         </div>
 
         {/* Camera Feed Area */}
@@ -970,33 +1035,49 @@ const FaceValidation = ({ member, onBack, authToken, userEmail, validateAs }: Fa
                     </div>
                   )}
 
-                  {/* Booking Status */}
+                  {/* Booking Status: hanya "Memiliki Booking" jika wajah terdeteksi cocok dengan booking ini */}
                   {apiResponse.has_booking !== undefined && (
-                    <div className="mt-4 pt-4 border-t border-gray-300">
-                      <div className={`flex items-center gap-3 p-3 rounded-lg ${
-                        apiResponse.has_booking 
-                          ? 'bg-green-100 border-2 border-green-300' 
-                          : 'bg-red-100 border-2 border-red-300'
-                      }`}>
-                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                          apiResponse.has_booking ? 'bg-green-200' : 'bg-red-200'
-                        }`}>
-                          {apiResponse.has_booking ? (
-                            <svg className="w-6 h-6 text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    <div className="mt-4 pt-4 border-t border-gray-300 space-y-3">
+                      {apiResponse.has_booking && !faceMatchesBooking ? (
+                        <div className="flex items-start gap-3 p-3 rounded-lg bg-amber-100 border-2 border-amber-300">
+                          <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-amber-200 flex-shrink-0">
+                            <svg className="w-6 h-6 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                             </svg>
-                          ) : (
-                            <svg className="w-6 h-6 text-red-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                          )}
+                          </div>
+                          <div className="min-w-0">
+                            <span className="text-sm font-semibold text-amber-800 block">Wajah tidak sesuai dengan booking ini</span>
+                            <p className="text-xs text-amber-700 mt-1">
+                              Yang terdeteksi: <strong>{apiResponse.nama}</strong>. Booking ini untuk: <strong>{expectedBookingName}</strong>. Silakan validasi dari baris booking yang sesuai.
+                            </p>
+                          </div>
                         </div>
-                        <span className={`text-sm font-semibold ${
-                          apiResponse.has_booking ? 'text-green-800' : 'text-red-800'
+                      ) : (
+                        <div className={`flex items-center gap-3 p-3 rounded-lg ${
+                          apiResponse.has_booking 
+                            ? 'bg-green-100 border-2 border-green-300' 
+                            : 'bg-red-100 border-2 border-red-300'
                         }`}>
-                          {apiResponse.has_booking ? 'Memiliki Booking' : 'Tidak Memiliki Booking'}
-                        </span>
-                      </div>
+                          <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                            apiResponse.has_booking ? 'bg-green-200' : 'bg-red-200'
+                          }`}>
+                            {apiResponse.has_booking ? (
+                              <svg className="w-6 h-6 text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                            ) : (
+                              <svg className="w-6 h-6 text-red-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            )}
+                          </div>
+                          <span className={`text-sm font-semibold ${
+                            apiResponse.has_booking ? 'text-green-800' : 'text-red-800'
+                          }`}>
+                            {apiResponse.has_booking ? 'Memiliki Booking' : 'Tidak Memiliki Booking'}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

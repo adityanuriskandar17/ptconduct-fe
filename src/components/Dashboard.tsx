@@ -23,6 +23,7 @@ interface Member {
   bookingStatus: boolean;
   faceStatus: boolean;
   faceBookingMember?: number; // face_booking_member value (0 or 1)
+  faceBookingPt?: number; // face_booking_pt value (0 or 1)
   club?: string; // Optional club field for client-side filtering
 }
 
@@ -116,7 +117,8 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
       gateStatus: true,
       bookingStatus: true,
       faceStatus: false,
-      faceBookingMember: 0,
+      faceBookingMember: (row.face_booking_member ?? row.faceBookingMember) === 1 ? 1 : 0,
+      faceBookingPt: (row.face_booking_pt ?? row.faceBookingPt) === 1 ? 1 : 0,
     };
   };
 
@@ -317,8 +319,9 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
           bookingStatus: item.booking === 1,
           // faceStatus: true if both face_booking_member === 1 AND face_booking_pt === 1
           faceStatus: item.face_booking_member === 1 && item.face_booking_pt === 1,
-          // Store face_booking_member value
+          // Store face_booking_member and face_booking_pt values
           faceBookingMember: item.face_booking_member || 0,
+          faceBookingPt: item.face_booking_pt || 0,
           // Store club info
           club: item.club || data.club || '',
         }));
@@ -942,6 +945,7 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
         }}
         authToken={authToken}
         userEmail={userEmail}
+        validationSource={validationSource}
         validateAs={validationTarget}
       />
     );
@@ -1250,7 +1254,19 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
                       )}
                     </div>
                   </td>
-                  <td className="p-2 md:p-2.5 lg:p-3 border-b border-[#e5e7eb] text-[#333] text-left text-xs md:text-sm" style={{ width: '120px', maxWidth: '120px', wordWrap: 'break-word', overflowWrap: 'break-word', whiteSpace: 'normal' }}>{member.pt}</td>
+                  <td className="p-2 md:p-2.5 lg:p-3 border-b border-[#e5e7eb] text-[#333] text-left text-xs md:text-sm" style={{ width: '150px', maxWidth: '150px', wordWrap: 'break-word', overflowWrap: 'break-word', whiteSpace: 'normal' }}>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-medium">{member.pt}</span>
+                      {member.faceBookingPt === 1 && (
+                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] md:text-[11px] font-semibold bg-gradient-to-r from-green-50 to-emerald-50 text-green-700 border border-green-200 shadow-sm">
+                          <svg className="w-3 h-3 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                          </svg>
+                          <span>Validated</span>
+                        </span>
+                      )}
+                    </div>
+                  </td>
                   <td className="p-2 md:p-2.5 lg:p-3 border-b border-[#e5e7eb] text-[#333] text-left text-xs" style={{ width: '160px', maxWidth: '160px', wordWrap: 'break-word', overflowWrap: 'break-word', whiteSpace: 'normal' }}>{formatDateTime(member.start)}</td>
                   <td className="hidden xl:table-cell p-2 md:p-2.5 lg:p-3 border-b border-[#e5e7eb] text-[#333] text-left text-xs md:text-sm">{member.end}</td>
                   <td className="hidden xl:table-cell p-2 md:p-2.5 lg:p-3 border-b border-[#e5e7eb] text-[#333] text-left text-xs" style={{ width: '160px', maxWidth: '160px', wordWrap: 'break-word', overflowWrap: 'break-word', whiteSpace: 'normal' }}>{formatDateTime(member.gateTime)}</td>
@@ -1293,7 +1309,8 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
                         </svg>
                         Detail
                       </button>
-                      {member.gateStatus && member.gateTime && member.bookingStatus && (
+                      {/* Tombol Validation muncul jika ada gate_time dan booking=1 (gate=0 tetap boleh validasi selama ada gate_time) */}
+                      {member.gateTime && member.bookingStatus && (
                         <button 
                           onClick={() => {
                             setSelectedMember(member);
@@ -1461,23 +1478,31 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
                       <tbody>
                         {rows.map((row: Record<string, unknown>, index: number) => {
                           const faceBookingPt = row.face_booking_pt ?? row.faceBookingPt;
+                          const faceBookingMember = row.face_booking_member ?? row.faceBookingMember;
                           const isPtValidated = faceBookingPt === 1 || faceBookingPt === '1';
+                          const isMemberValidated = faceBookingMember === 1 || faceBookingMember === '1';
+                          const validatedBadge = (
+                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] md:text-[11px] font-semibold bg-gradient-to-r from-green-50 to-emerald-50 text-green-700 border border-green-200 shadow-sm">
+                              <svg className="w-3 h-3 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                              </svg>
+                              <span>Validated</span>
+                            </span>
+                          );
                           return (
                           <tr key={index} className="hover:bg-[#f9fafb]">
                             <td className="p-2 md:p-2.5 border-b border-[#e5e7eb] text-[#333] text-center">{index + 1}</td>
                             {GYMMASTER_COLUMNS.map((col) => (
-                              <td key={col.label} className="p-2 md:p-2.5 border-b border-[#e5e7eb] text-[#333] text-left break-words" style={col.label === 'Nama PT' ? { width: '150px', maxWidth: '150px', wordWrap: 'break-word', overflowWrap: 'break-word', whiteSpace: 'normal' } as React.CSSProperties : undefined}>
-                                {col.label === 'Nama PT' ? (
+                              <td key={col.label} className="p-2 md:p-2.5 border-b border-[#e5e7eb] text-[#333] text-left break-words" style={(col.label === 'Nama Member' || col.label === 'Nama PT') ? { width: '150px', maxWidth: '150px', wordWrap: 'break-word', overflowWrap: 'break-word', whiteSpace: 'normal' } as React.CSSProperties : undefined}>
+                                {col.label === 'Nama Member' ? (
                                   <div className="flex items-center gap-2 flex-wrap">
                                     <span className="font-medium">{getGymmasterCell(row, col)}</span>
-                                    {isPtValidated && (
-                                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] md:text-[11px] font-semibold bg-gradient-to-r from-green-50 to-emerald-50 text-green-700 border border-green-200 shadow-sm">
-                                        <svg className="w-3 h-3 text-green-600" fill="currentColor" viewBox="0 0 20 20">
-                                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                                        </svg>
-                                        <span>Validated</span>
-                                      </span>
-                                    )}
+                                    {isMemberValidated && validatedBadge}
+                                  </div>
+                                ) : col.label === 'Nama PT' ? (
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="font-medium">{getGymmasterCell(row, col)}</span>
+                                    {isPtValidated && validatedBadge}
                                   </div>
                                 ) : (
                                   getGymmasterCell(row, col)
