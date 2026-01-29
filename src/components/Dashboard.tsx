@@ -6,7 +6,6 @@ import totalBookingIcon from '../assets/total_booking.svg';
 // import selectDateIcon from '../assets/select_date.svg';
 import greenCheckIcon from '../assets/green_check.svg';
 import searchIcon from '../assets/search.svg';
-import validasiIcon from '../assets/validasi.svg';
 import gateCheckIcon from '../assets/gate_check.svg';
 import uncheckIcon from '../assets/uncheck.svg';
 import FaceValidation from './FaceValidation';
@@ -697,8 +696,6 @@ const Dashboard = ({ onLogout, userEmail = 'adit_sang_legenda@example.com', auth
       // - Backend will use "name" for nama_pt and "nama_member" for nama_member
       const mappedBookings = (bookingsArray || []).map((booking: any) => {
         // Field "name" in booking data is the PT/trainer name - keep it as is
-        const ptName = booking.name || booking.location || booking.trainer_name || booking.trainer || booking.trainerName || 'N/A';
-        
         console.log(`=== BOOKING ${booking.id} MAPPING ===`);
         console.log('Original booking.name (PT name):', booking.name);
         console.log('Member name (from profile FULLNAME):', memberName);

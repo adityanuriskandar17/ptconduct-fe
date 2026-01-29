@@ -379,27 +379,6 @@ const FaceValidation = ({ member, onBack, authToken, userEmail, validationSource
     }
   };
 
-  // Untuk check-booking (Member) & start_time (PT): BE cocokkan by tanggal. Kirim tanggal booking + waktu saat face check.
-  const getGateTimeForMemberCheck = (): string => {
-    const dateStr = member.gateTime || member.start;
-    const bookingDateOnly = getBookingDateOnly(dateStr || '');
-    const now = new Date();
-    const h = String(now.getHours()).padStart(2, '0');
-    const min = String(now.getMinutes()).padStart(2, '0');
-    const s = String(now.getSeconds()).padStart(2, '0');
-    if (bookingDateOnly) return `${bookingDateOnly} ${h}:${min}:${s}`;
-    try {
-      const fallback = new Date(dateStr);
-      const y = fallback.getFullYear();
-      const m = String(fallback.getMonth() + 1).padStart(2, '0');
-      const d = String(fallback.getDate()).padStart(2, '0');
-      return `${y}-${m}-${d} ${h}:${min}:${s}`;
-    } catch {
-      const n = new Date();
-      return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')} ${h}:${min}:${s}`;
-    }
-  };
-
   const setupFaceMesh = () => {
     if (!videoRef.current || isSetupRef.current) return;
     isSetupRef.current = true;
