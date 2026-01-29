@@ -361,24 +361,6 @@ const FaceValidation = ({ member, onBack, authToken, userEmail, validationSource
     }
   };
 
-  // Ambil tanggal YYYY-MM-DD dari string tanpa timezone shift (hindari new Date() yang bisa geser tanggal).
-  const getBookingDateOnly = (dateStr: string): string | null => {
-    if (!dateStr || typeof dateStr !== 'string') return null;
-    const trimmed = dateStr.trim();
-    const match = trimmed.match(/^(\d{4}-\d{2}-\d{2})/);
-    if (match) return match[1];
-    try {
-      const date = new Date(trimmed);
-      if (Number.isNaN(date.getTime())) return null;
-      const y = date.getFullYear();
-      const m = String(date.getMonth() + 1).padStart(2, '0');
-      const d = String(date.getDate()).padStart(2, '0');
-      return `${y}-${m}-${d}`;
-    } catch {
-      return null;
-    }
-  };
-
   const setupFaceMesh = () => {
     if (!videoRef.current || isSetupRef.current) return;
     isSetupRef.current = true;
